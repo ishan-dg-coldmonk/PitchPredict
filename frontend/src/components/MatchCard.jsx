@@ -1,6 +1,6 @@
 import { MapPin, Clock } from 'lucide-react'
 import LiveIndicator from './LiveIndicator'
-import { formatDateTime, timeUntil } from '../utils/helpers'
+import { formatTimeIST, timeUntil } from '../utils/helpers'
 
 export default function MatchCard({ match, onClick, children }) {
   const isLive = match.status === 'LIVE'
@@ -84,7 +84,7 @@ export default function MatchCard({ match, onClick, children }) {
           ) : (
             <div className="flex flex-col items-center">
               <span className="text-[11px] font-medium text-gray-400 tabular-nums tracking-wide">
-                {formatDateTime(match.matchDate)}
+                {formatTimeIST(match.matchDate)} IST
               </span>
               <span className="text-sm font-bold text-white/15 mt-0.5">VS</span>
             </div>

@@ -1,9 +1,10 @@
-import { useState, useEffect } from 'react'
-import { useParams, Link } from 'react-router-dom'
-import { motion } from 'framer-motion'
-import { Calendar, Users, Check } from 'lucide-react'
+import { useState, useEffect, useMemo } from 'react'
+import { useParams, useNavigate } from 'react-router-dom'
+import { motion, AnimatePresence } from 'framer-motion'
+import { Calendar, Users, Check, Search, LogIn } from 'lucide-react'
 import Navbar from '../components/Navbar'
 import MatchCard from '../components/MatchCard'
+import JoinRoomModal from '../components/JoinRoomModal'
 import { STATUS_COLORS } from '../utils/constants'
 import { formatDate } from '../utils/helpers'
 import { useAuth } from '../context/AuthContext'
@@ -12,16 +13,17 @@ import toast from 'react-hot-toast'
 
 export default function EventDetailPage() {
   const { id } = useParams()
+  const navigate = useNavigate()
   const { user } = useAuth()
   const [event, setEvent] = useState(null)
   const [rooms, setRooms] = useState([])
   const [matches, setMatches] = useState([])
   const [tab, setTab] = useState('rooms')
-  const [joinCode, setJoinCode] = useState('')
-  const [joining, setJoining] = useState(false)
   const [loading, setLoading] = useState(true)
+  const [searchQuery, setSearchQuery] = useState('')
+  const [joinModalRoom, setJoinModalRoom] = useState(null) // room to join via modal
 
-  useEffect(() => {
+  const loadData = () =>
     Promise.all([
       API.get(`/events/${id}`),
       API.get(`/rooms/event/${id}`),
@@ -33,22 +35,36 @@ export default function EventDetailPage() {
         setMatches(m.data)
       })
       .finally(() => setLoading(false))
-  }, [id])
 
-  const handleJoin = async (e) => {
-    e.preventDefault()
-    if (!joinCode.trim()) return
-    setJoining(true)
-    try {
-      await API.post('/rooms/join', { eventId: Number(id), registrationCode: joinCode.trim() })
-      toast.success('Joined room!')
-      setJoinCode('')
-      const r = await API.get(`/rooms/event/${id}`)
-      setRooms(r.data)
-    } catch (err) {
-      toast.error(err.response?.data?.error || 'Failed to join')
-    } finally {
-      setJoining(false)
+  useEffect(() => { loadData() }, [id])
+
+  // Filter rooms by search query
+  const filteredRooms = useMemo(() => {
+    if (!searchQuery.trim()) return rooms
+    const q = searchQuery.trim().toLowerCase()
+    return rooms.filter(
+      (r) =>
+        r.name.toLowerCase().includes(q) ||
+        (r.description && r.description.toLowerCase().includes(q))
+    )
+  }, [rooms, searchQuery])
+
+  const handleEnterRoom = (room) => {
+    if (room.userJoined) {
+      // Already a member — go straight to room
+      navigate(`/rooms/${room.id}`)
+    } else {
+      // Not a member — show join modal
+      setJoinModalRoom(room)
+    }
+  }
+
+  const handleJoined = async () => {
+    const r = await API.get(`/rooms/event/${id}`)
+    setRooms(r.data)
+    // Navigate into the room they just joined
+    if (joinModalRoom) {
+      navigate(`/rooms/${joinModalRoom.id}`)
     }
   }
 
@@ -71,6 +87,8 @@ export default function EventDetailPage() {
     <div className="min-h-screen bg-navy">
       <Navbar />
       <div className="pt-20 pb-12 max-w-5xl mx-auto px-4">
+
+        {/* Event header */}
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="glass-card p-8 mb-8">
           <span className={`inline-flex px-3 py-1 rounded-full text-xs font-semibold border mb-3 ${colors.bg} ${colors.text} ${colors.border}`}>
             {event.status}
@@ -83,6 +101,7 @@ export default function EventDetailPage() {
           </div>
         </motion.div>
 
+        {/* Tabs */}
         <div className="glass-card inline-flex p-1 mb-8 gap-1">
           {['rooms', 'matches'].map((t) => (
             <button
@@ -99,47 +118,80 @@ export default function EventDetailPage() {
 
         {tab === 'rooms' && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
-            <form onSubmit={handleJoin} className="flex gap-3 mb-8">
+            {/* Search bar */}
+            <div className="relative mb-6">
+              <Search size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500 pointer-events-none" />
               <input
                 type="text"
-                placeholder="Enter room code to join..."
-                value={joinCode}
-                onChange={(e) => setJoinCode(e.target.value)}
-                className="input-field flex-1"
+                placeholder="Search rooms by name…"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="input-field pl-10"
               />
-              <button type="submit" disabled={joining} className="btn-primary whitespace-nowrap">
-                {joining ? 'Joining...' : 'Join Room'}
-              </button>
-            </form>
+              {searchQuery && (
+                <button
+                  onClick={() => setSearchQuery('')}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300 text-xs px-2 py-1 rounded transition-colors"
+                >
+                  Clear
+                </button>
+              )}
+            </div>
 
-            {rooms.length === 0 ? (
-              <div className="glass-card p-8 text-center"><p className="text-gray-500">No rooms yet</p></div>
+            {filteredRooms.length === 0 ? (
+              <div className="glass-card p-8 text-center">
+                <p className="text-gray-500">
+                  {searchQuery ? `No rooms found for "${searchQuery}"` : 'No rooms yet'}
+                </p>
+              </div>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {rooms.map((room, i) => (
+                {filteredRooms.map((room, i) => (
                   <motion.div
                     key={room.id}
                     initial={{ opacity: 0, y: 20 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: i * 0.05 }}
+                    className="glass-card p-5 flex flex-col gap-3 hover:border-primary/30 hover:-translate-y-1 transition-all duration-300 border border-white/10"
                   >
-                    <Link to={`/rooms/${room.id}`} className="block glass-card-hover p-5">
-                      <div className="flex items-center justify-between mb-2">
-                        <h3 className="font-bold text-white">{room.name}</h3>
-                        {room.userJoined && (
-                          <span className="flex items-center gap-1 text-xs text-accent bg-accent/10 border border-accent/20 px-2 py-0.5 rounded-full">
-                            <Check size={12} /> Joined
-                          </span>
-                        )}
-                      </div>
-                      {room.description && <p className="text-sm text-gray-400 mb-3 line-clamp-2">{room.description}</p>}
-                      <div className="flex items-center gap-2 text-xs text-gray-500">
-                        <Users size={12} /> {room.memberCount} members
-                      </div>
-                      <span className="text-primary text-sm font-medium mt-3 inline-flex items-center gap-1 group-hover:gap-2 transition-all">
-                        Enter Room &rarr;
-                      </span>
-                    </Link>
+                    {/* Room name + joined badge */}
+                    <div className="flex items-center justify-between">
+                      <h3 className="font-bold text-white">{room.name}</h3>
+                      {room.userJoined && (
+                        <span className="flex items-center gap-1 text-xs text-accent bg-accent/10 border border-accent/20 px-2 py-0.5 rounded-full flex-shrink-0">
+                          <Check size={12} /> Joined
+                        </span>
+                      )}
+                    </div>
+
+                    {room.description && (
+                      <p className="text-sm text-gray-400 line-clamp-2 flex-1">{room.description}</p>
+                    )}
+
+                    <div className="flex items-center gap-2 text-xs text-gray-500">
+                      <Users size={12} /> {room.memberCount} {room.memberCount === 1 ? 'member' : 'members'}
+                      {room.maxMembers && (
+                        <span className="text-gray-600">/ {room.maxMembers} max</span>
+                      )}
+                    </div>
+
+                    {/* Enter Room button — always shown, triggers modal if not joined */}
+                    <button
+                      onClick={() => handleEnterRoom(room)}
+                      className={`
+                        mt-auto flex items-center justify-center gap-2 w-full py-2 rounded-xl text-sm font-semibold transition-all duration-200
+                        ${room.userJoined
+                          ? 'bg-primary/15 hover:bg-primary/25 text-primary border border-primary/25 hover:border-primary/50'
+                          : 'bg-white/5 hover:bg-white/10 text-gray-300 hover:text-white border border-white/10 hover:border-white/20'
+                        }
+                      `}
+                    >
+                      {room.userJoined ? (
+                        <><LogIn size={14} /> Enter Room</>
+                      ) : (
+                        <><LogIn size={14} /> Join &amp; Enter</>
+                      )}
+                    </button>
                   </motion.div>
                 ))}
               </div>
@@ -157,6 +209,19 @@ export default function EventDetailPage() {
           </motion.div>
         )}
       </div>
+
+      {/* Join Room Modal */}
+      <AnimatePresence>
+        {joinModalRoom && (
+          <JoinRoomModal
+            key={joinModalRoom.id}
+            room={joinModalRoom}
+            eventId={id}
+            onClose={() => setJoinModalRoom(null)}
+            onJoined={handleJoined}
+          />
+        )}
+      </AnimatePresence>
     </div>
   )
 }

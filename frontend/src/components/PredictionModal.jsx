@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { X } from 'lucide-react'
-import { formatDateTime } from '../utils/helpers'
+import { X, Lock, AlertCircle } from 'lucide-react'
+import { formatDateTimeIST } from '../utils/helpers'
 import API from '../api/axios'
 import toast from 'react-hot-toast'
 
@@ -10,6 +10,8 @@ export default function PredictionModal({ match, roomId, eventId, existing, onCl
   const [awayScore, setAwayScore] = useState(existing?.predictedAwayScore ?? 0)
   const [saving, setSaving] = useState(false)
 
+  const isFinished = match.status === 'FINISHED'
+  const isLive = match.status === 'LIVE'
   const canPredict = match.predictionOpen && match.status === 'SCHEDULED'
 
   useEffect(() => {
@@ -39,13 +41,19 @@ export default function PredictionModal({ match, roomId, eventId, existing, onCl
     }
   }
 
+  const getClosedMessage = () => {
+    if (isFinished) return { icon: '🏁', text: 'Match has ended', sub: 'Predictions are no longer accepted' }
+    if (isLive) return { icon: '🔴', text: 'Match is live!', sub: 'Prediction window has closed' }
+    return { icon: '🔒', text: 'Prediction window closed', sub: 'Closed 10 min before kick-off' }
+  }
+
   return (
     <AnimatePresence>
       <motion.div
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
-        className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+        className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4"
         onClick={onClose}
       >
         <motion.div
@@ -55,19 +63,21 @@ export default function PredictionModal({ match, roomId, eventId, existing, onCl
           className="glass-card p-6 w-full max-w-md"
           onClick={(e) => e.stopPropagation()}
         >
+          {/* Header */}
           <div className="flex items-center justify-between mb-4">
             <div>
               <div className="flex items-center gap-2 text-xs text-gray-500">
                 {match.groupName && <span>Group {match.groupName}</span>}
                 {match.stage && <span>{match.stage.replace(/_/g, ' ')}</span>}
               </div>
-              <div className="text-xs text-gray-400 mt-1">{formatDateTime(match.matchDate)}</div>
+              <div className="text-xs text-gray-400 mt-1">{formatDateTimeIST(match.matchDate)} IST</div>
             </div>
             <button onClick={onClose} className="p-1 hover:bg-white/10 rounded-lg transition-colors">
               <X size={20} className="text-gray-400" />
             </button>
           </div>
 
+          {/* Teams + Score Inputs */}
           <div className="flex items-center justify-between mb-6">
             <div className="flex flex-col items-center gap-2 flex-1">
               {match.homeCrest && <img src={match.homeCrest} alt="" className="w-12 h-12 object-contain" />}
@@ -82,7 +92,7 @@ export default function PredictionModal({ match, roomId, eventId, existing, onCl
                 value={homeScore}
                 onChange={(e) => setHomeScore(Math.max(0, Math.min(20, parseInt(e.target.value) || 0)))}
                 disabled={!canPredict}
-                className="w-16 h-16 bg-white/5 border border-white/10 rounded-xl text-center text-3xl font-black text-white focus:border-primary/50 focus:ring-2 focus:ring-primary/20 outline-none disabled:opacity-50"
+                className="w-16 h-16 bg-white/5 border border-white/10 rounded-xl text-center text-3xl font-black text-white focus:border-primary/50 focus:ring-2 focus:ring-primary/20 outline-none disabled:opacity-40 disabled:cursor-not-allowed"
               />
               <span className="text-2xl font-bold text-gray-500">:</span>
               <input
@@ -92,7 +102,7 @@ export default function PredictionModal({ match, roomId, eventId, existing, onCl
                 value={awayScore}
                 onChange={(e) => setAwayScore(Math.max(0, Math.min(20, parseInt(e.target.value) || 0)))}
                 disabled={!canPredict}
-                className="w-16 h-16 bg-white/5 border border-white/10 rounded-xl text-center text-3xl font-black text-white focus:border-primary/50 focus:ring-2 focus:ring-primary/20 outline-none disabled:opacity-50"
+                className="w-16 h-16 bg-white/5 border border-white/10 rounded-xl text-center text-3xl font-black text-white focus:border-primary/50 focus:ring-2 focus:ring-primary/20 outline-none disabled:opacity-40 disabled:cursor-not-allowed"
               />
             </div>
 
@@ -102,6 +112,17 @@ export default function PredictionModal({ match, roomId, eventId, existing, onCl
             </div>
           </div>
 
+          {/* Actual score if finished */}
+          {isFinished && match.homeScore !== null && (
+            <div className="bg-white/5 border border-white/10 rounded-xl p-3 mb-4 text-center">
+              <div className="text-xs text-gray-400 mb-1">Final Score</div>
+              <div className="text-2xl font-black text-white">
+                {match.homeScore} – {match.awayScore}
+              </div>
+            </div>
+          )}
+
+          {/* Existing prediction */}
           {existing && (
             <div className="bg-accent/10 border border-accent/20 rounded-xl p-3 mb-4">
               <div className="text-xs text-accent mb-1 font-semibold">Your Prediction</div>
@@ -117,6 +138,7 @@ export default function PredictionModal({ match, roomId, eventId, existing, onCl
             </div>
           )}
 
+          {/* Action area */}
           {canPredict ? (
             <button
               onClick={handleSubmit}
@@ -128,9 +150,18 @@ export default function PredictionModal({ match, roomId, eventId, existing, onCl
               ) : existing ? 'Update Prediction' : 'Submit Prediction'}
             </button>
           ) : (
-            <div className="text-center text-sm text-gray-500 bg-white/5 rounded-xl p-3">
-              {match.status !== 'SCHEDULED' ? 'Match already started' : 'Prediction window is closed'}
-            </div>
+            (() => {
+              const msg = getClosedMessage()
+              return (
+                <div className="flex items-center gap-3 bg-white/5 border border-white/10 rounded-xl p-4">
+                  <span className="text-2xl">{msg.icon}</span>
+                  <div>
+                    <div className="text-sm font-semibold text-white">{msg.text}</div>
+                    <div className="text-xs text-gray-500 mt-0.5">{msg.sub}</div>
+                  </div>
+                </div>
+              )
+            })()
           )}
         </motion.div>
       </motion.div>
