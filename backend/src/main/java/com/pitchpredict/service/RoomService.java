@@ -1,11 +1,14 @@
 package com.pitchpredict.service;
 
 import com.pitchpredict.dto.RoomDTO;
+import com.pitchpredict.dto.RoomMemberDTO;
 import com.pitchpredict.entity.Room;
 import com.pitchpredict.entity.RoomMember;
+import com.pitchpredict.entity.User;
 import com.pitchpredict.exception.ApiException;
 import com.pitchpredict.repository.RoomMemberRepository;
 import com.pitchpredict.repository.RoomRepository;
+import com.pitchpredict.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
@@ -17,10 +20,37 @@ public class RoomService {
 
     private final RoomRepository roomRepository;
     private final RoomMemberRepository roomMemberRepository;
+    private final UserRepository userRepository;
 
     public List<RoomDTO> getRoomsByEvent(Long eventId, Long userId) {
         return roomRepository.findByEventId(eventId).stream()
                 .map(room -> toDTO(room, userId))
+                .toList();
+    }
+
+    /** Admin: get all rooms for an event without user-join context */
+    public List<RoomDTO> getRoomsForAdmin(Long eventId) {
+        return roomRepository.findByEventId(eventId).stream()
+                .map(room -> toDTO(room, null))
+                .toList();
+    }
+
+    /** Admin: get all members of a room with user details */
+    public List<RoomMemberDTO> getRoomMembers(Long roomId) {
+        List<RoomMember> members = roomMemberRepository.findByRoomId(roomId);
+        return members.stream()
+                .map(rm -> {
+                    User user = userRepository.findById(rm.getUserId()).orElse(null);
+                    if (user == null) return null;
+                    return RoomMemberDTO.builder()
+                            .userId(user.getId())
+                            .username(user.getUsername())
+                            .fullName(user.getFullName())
+                            .profilePic(user.getProfilePic())
+                            .joinedAt(rm.getJoinedAt())
+                            .build();
+                })
+                .filter(dto -> dto != null)
                 .toList();
     }
 
