@@ -1,0 +1,95 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer components {
+  .glass {
+    @apply bg-white/5 backdrop-blur-xl border border-white/10 shadow-2xl;
+  }
+  .glass-card {
+    @apply glass rounded-2xl;
+  }
+  .glass-card-hover {
+    @apply glass-card hover:bg-white/10 hover:border-primary/30 hover:-translate-y-1 transition-all duration-300;
+  }
+  .gradient-text {
+    @apply bg-clip-text text-transparent bg-gradient-to-r from-primary via-secondary to-accent;
+  }
+  .btn-primary {
+    @apply bg-gradient-to-r from-primary to-primary-dark text-white font-semibold rounded-xl px-6 py-3
+           shadow-lg shadow-primary/25 hover:scale-[1.02] active:scale-[0.98] transition-all duration-200;
+  }
+  .btn-secondary {
+    @apply bg-gradient-to-r from-secondary to-secondary-dark text-white font-semibold rounded-xl px-6 py-3
+           shadow-lg shadow-secondary/25 hover:scale-[1.02] active:scale-[0.98] transition-all duration-200;
+  }
+  .btn-accent {
+    @apply bg-gradient-to-r from-accent to-accent-dark text-navy font-semibold rounded-xl px-6 py-3
+           shadow-lg shadow-accent/25 hover:scale-[1.02] active:scale-[0.98] transition-all duration-200;
+  }
+  .btn-outline {
+    @apply border-2 border-primary text-primary font-semibold rounded-xl px-6 py-3
+           hover:bg-primary hover:text-white transition-all duration-200;
+  }
+  .input-field {
+    @apply w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white
+           placeholder-gray-500 focus:border-primary/50 focus:ring-2 focus:ring-primary/20
+           outline-none transition-all duration-200;
+  }
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(108,99,255,0.4) rgba(15,15,26,0.5);
+}
+
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: rgba(15,15,26,0.5); }
+::-webkit-scrollbar-thumb { background: rgba(108,99,255,0.4); border-radius: 9999px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(108,99,255,0.6); }
+
+body { margin: 0; }
+
+.text-glow {
+  text-shadow: 0 0 20px rgba(108,99,255,0.5), 0 0 40px rgba(108,99,255,0.2);
+}
+
+/* Match card */
+.match-card {
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.06);
+  border-radius: 12px;
+  position: relative;
+  overflow: hidden;
+  transition: transform 200ms cubic-bezier(0.16, 1, 0.3, 1),
+              background 200ms cubic-bezier(0.16, 1, 0.3, 1),
+              border-color 200ms cubic-bezier(0.16, 1, 0.3, 1),
+              box-shadow 200ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+.match-card:hover {
+  transform: translateY(-2px);
+  background: rgba(255,255,255,0.05);
+  border-color: rgba(108,99,255,0.25);
+  box-shadow: 0 8px 32px rgba(108,99,255,0.08);
+}
+.match-card.is-live {
+  border-color: rgba(239,68,68,0.25);
+  background: rgba(239,68,68,0.04);
+}
+.match-card.is-live:hover {
+  border-color: rgba(239,68,68,0.4);
+  box-shadow: 0 8px 32px rgba(239,68,68,0.1);
+}
+
+/* Snap expo-out transition */
+.snap-ease {
+  transition-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .match-card,
+  .match-card:hover {
+    transform: none !important;
+    transition: none !important;
+  }
+}

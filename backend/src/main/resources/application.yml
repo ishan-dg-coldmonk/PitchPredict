@@ -1,0 +1,18 @@
+spring:
+  profiles:
+    active: dev
+  servlet:
+    multipart:
+      max-file-size: 5MB
+      max-request-size: 5MB
+
+server:
+  port: 8080
+
+jwt:
+  secret: pitchpredict-super-secret-key-that-is-256-bits-long-for-hmac-sha512
+  expiration: 86400000
+
+football-data:
+  api-key: 6e63767a3c474974a868ac9a6cd04dc8
+  base-url: https://api.football-data.org/v4
