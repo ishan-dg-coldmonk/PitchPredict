@@ -23,21 +23,42 @@ public class MatchScoreUpdater {
     private final FootballDataService footballDataService;
     private final PointsCalculationService pointsCalculationService;
 
-    @Scheduled(fixedRate = 60000)
+    /**
+     * Runs every 60 seconds.
+     *
+     * 1. Finds all LIVE + SCHEDULED matches (SCHEDULED ones are pre-filtered
+     *    inside FootballDataService to only those within 5 min of kick-off).
+     * 2. Calls football-data.org to update scores/status.
+     * 3. After the update, checks which LIVE matches became FINISHED and
+     *    triggers points calculation for them.
+     *
+     * Half-time (PAUSED in football-data v4) stays as LIVE in our system —
+     * points are only calculated when status transitions to FINISHED.
+     */
+    @Scheduled(fixedRate = 60_000)
     public void updateScores() {
-        List<Match> liveMatches = matchRepository.findByStatus(MatchStatus.LIVE);
-        if (liveMatches.isEmpty()) return;
+        // Snapshot IDs of currently-live matches before the update
+        List<Match> liveMatchesBefore = matchRepository.findByStatus(MatchStatus.LIVE);
+        if (liveMatchesBefore.isEmpty()) {
+            // Still poll scheduled matches near kick-off time
+            List<Match> scheduled = matchRepository.findByStatus(MatchStatus.SCHEDULED);
+            if (scheduled.isEmpty()) return;
+        }
 
-        Set<Long> liveMatchIds = liveMatches.stream()
+        Set<Long> liveIdsBefore = liveMatchesBefore.stream()
                 .map(Match::getId)
                 .collect(Collectors.toSet());
 
+        // Update scores + statuses from API
         footballDataService.updateLiveScores();
 
-        for (Long matchId : liveMatchIds) {
+        // For every match that was LIVE before the update, check if it's now FINISHED
+        for (Long matchId : liveIdsBefore) {
             Match match = matchRepository.findById(matchId).orElse(null);
-            if (match != null && match.getStatus() == MatchStatus.FINISHED) {
-                log.info("Match {} finished, calculating points", matchId);
+            if (match == null) continue;
+
+            if (match.getStatus() == MatchStatus.FINISHED) {
+                log.info("Match {} just finished — calculating points", matchId);
                 pointsCalculationService.calculatePointsForMatch(match);
             }
         }

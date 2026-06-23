@@ -38,6 +38,8 @@ public class FootballDataService {
 
     private final RestTemplate restTemplate = new RestTemplate();
 
+    // ── Sync all matches for an event from football-data.org ────────────────
+
     public int syncMatches(Long eventId) {
         Event event = eventRepository.findById(eventId)
                 .orElseThrow(() -> ApiException.notFound("Event not found"));
@@ -98,18 +100,20 @@ public class FootballDataService {
                     group = group.substring(6);
                 }
                 match.setGroupName(group);
-
                 match.setVenue(m.path("venue").asText(null));
 
-                JsonNode score = m.path("score").path("fullTime");
-                if (!score.path("home").isNull()) {
-                    match.setHomeScore(score.path("home").asInt());
-                }
-                if (!score.path("away").isNull()) {
-                    match.setAwayScore(score.path("away").asInt());
-                }
+                // For completed matches during sync, set full-time score
+                String apiStatus = m.path("status").asText("SCHEDULED");
+                MatchStatus status = mapApiStatus(apiStatus);
+                match.setStatus(status);
 
-                match.setStatus(mapApiStatus(m.path("status").asText("SCHEDULED")));
+                if (status == MatchStatus.FINISHED) {
+                    JsonNode ftScore = m.path("score").path("fullTime");
+                    if (!ftScore.path("home").isNull()) {
+                        match.setHomeScore(ftScore.path("home").asInt());
+                        match.setAwayScore(ftScore.path("away").asInt());
+                    }
+                }
 
                 matchRepository.save(match);
                 count++;
@@ -123,13 +127,16 @@ public class FootballDataService {
         }
     }
 
+    // ── Live score updater (called every minute by MatchScoreUpdater) ────────
+
     public void updateLiveScores() {
-        List<Match> liveMatches = matchRepository.findByStatusIn(
+        List<Match> candidates = matchRepository.findByStatusIn(
                 List.of(MatchStatus.LIVE, MatchStatus.SCHEDULED, MatchStatus.SUSPENDED));
 
-        for (Match match : liveMatches) {
+        for (Match match : candidates) {
             if (match.getExternalMatchId() == null) continue;
 
+            // For scheduled matches, only poll once they're within 5 minutes of kick-off
             if (match.getStatus() == MatchStatus.SCHEDULED) {
                 if (match.getMatchDate().isAfter(LocalDateTime.now().plusMinutes(5))) {
                     continue;
@@ -145,23 +152,39 @@ public class FootballDataService {
                 ResponseEntity<String> response = restTemplate.exchange(url, HttpMethod.GET, entity, String.class);
                 JsonNode m = objectMapper.readTree(response.getBody());
 
-                MatchStatus newStatus = mapApiStatus(m.path("status").asText("SCHEDULED"));
+                String apiStatus = m.path("status").asText("SCHEDULED");
+                MatchStatus newStatus = mapApiStatus(apiStatus);
                 MatchStatus oldStatus = match.getStatus();
 
                 match.setStatus(newStatus);
 
-                JsonNode fullTime = m.path("score").path("fullTime");
-                JsonNode halfTime = m.path("score").path("halfTime");
+                // ─── SCORE LOGIC ──────────────────────────────────────────────
+                // football-data.org v4 returns:
+                //   score.fullTime  → goals scored in 90 min (populated during play and after)
+                //   score.halfTime  → half-time score (only meaningful at PAUSED/after)
+                //   score.regularTime, extraTime, penalties also available
+                //
+                // FIX: NEVER use halfTime score to display on the card.
+                // We only show score for LIVE or FINISHED matches, and we
+                // always read from fullTime (which the API fills in real-time
+                // during the match). halfTime is only for reference, not display.
+                // This prevents the "match ended at half-time" bug.
 
-                if (!fullTime.path("home").isNull()) {
-                    match.setHomeScore(fullTime.path("home").asInt());
-                    match.setAwayScore(fullTime.path("away").asInt());
-                } else if (!halfTime.path("home").isNull()) {
-                    match.setHomeScore(halfTime.path("home").asInt());
-                    match.setAwayScore(halfTime.path("away").asInt());
+                JsonNode ftScore = m.path("score").path("fullTime");
+
+                if (newStatus == MatchStatus.LIVE || newStatus == MatchStatus.FINISHED) {
+                    // fullTime.home is null before the match starts, then fills in as play progresses
+                    if (!ftScore.path("home").isNull() && !ftScore.path("away").isNull()) {
+                        match.setHomeScore(ftScore.path("home").asInt());
+                        match.setAwayScore(ftScore.path("away").asInt());
+                    }
                 }
 
-                match.setGoalsJson(extractGoalsJson(m));
+                // Only extract goals for FINISHED matches (avoid partial goal lists)
+                if (newStatus == MatchStatus.FINISHED) {
+                    match.setGoalsJson(extractGoalsJson(m));
+                }
+
                 matchRepository.save(match);
 
                 if (oldStatus != MatchStatus.FINISHED && newStatus == MatchStatus.FINISHED) {
@@ -175,6 +198,8 @@ public class FootballDataService {
             }
         }
     }
+
+    // ── Sync goals for finished matches that don't have goal data yet ────────
 
     public int syncGoalsForEvent(Long eventId) {
         List<Match> finishedMatches = matchRepository.findByEventIdOrderByMatchDateAsc(eventId).stream()
@@ -198,7 +223,7 @@ public class FootballDataService {
                 matchRepository.save(match);
                 synced++;
 
-                Thread.sleep(7000);
+                Thread.sleep(7000); // respect API rate limit
             } catch (InterruptedException ie) {
                 Thread.currentThread().interrupt();
                 break;
@@ -209,6 +234,8 @@ public class FootballDataService {
         log.info("Synced goals for {} matches", synced);
         return synced;
     }
+
+    // ── Helpers ─────────────────────────────────────────────────────────────
 
     private String extractGoalsJson(JsonNode matchNode) {
         JsonNode goals = matchNode.path("goals");
@@ -233,13 +260,36 @@ public class FootballDataService {
         }
     }
 
+    /**
+     * Maps football-data.org v4 status strings to our MatchStatus enum.
+     *
+     * football-data.org v4 statuses:
+     *   SCHEDULED   – not started
+     *   TIMED       – scheduled with confirmed time
+     *   IN_PLAY     – currently playing (1st or 2nd half)
+     *   PAUSED      – half-time break  ← KEY: this is NOT finished, it's half-time
+     *   EXTRA_TIME  – extra time in play
+     *   PENALTY_SHOOTOUT – penalties
+     *   FINISHED    – full-time completed
+     *   AWARDED     – awarded result (e.g. walkover)
+     *   SUSPENDED   – temporarily suspended
+     *   POSTPONED   – postponed to a new date
+     *   CANCELLED   – cancelled entirely
+     */
     private MatchStatus mapApiStatus(String apiStatus) {
         return switch (apiStatus) {
+            // Completed – calculate points
             case "FINISHED", "AWARDED" -> MatchStatus.FINISHED;
+
+            // In play – PAUSED means half-time, still a live match, NOT finished
             case "IN_PLAY", "PAUSED", "EXTRA_TIME", "PENALTY_SHOOTOUT" -> MatchStatus.LIVE;
+
+            // Other states
             case "SUSPENDED" -> MatchStatus.SUSPENDED;
-            case "POSTPONED" -> MatchStatus.POSTPONED;
-            case "CANCELLED" -> MatchStatus.CANCELLED;
+            case "POSTPONED"  -> MatchStatus.POSTPONED;
+            case "CANCELLED"  -> MatchStatus.CANCELLED;
+
+            // SCHEDULED, TIMED, and anything unknown
             default -> MatchStatus.SCHEDULED;
         };
     }
