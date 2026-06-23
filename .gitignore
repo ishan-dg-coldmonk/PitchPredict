@@ -1,1 +1,4 @@
 .claude/
+
+DEPLOYMENT.md
+deploy-ec2.sh
