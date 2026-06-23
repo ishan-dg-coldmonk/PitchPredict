@@ -1,7 +1,7 @@
-import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useParams } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Users, Eye, X, Zap, CalendarDays } from 'lucide-react'
+import { Users, Eye, X, CalendarDays, CheckCircle2 } from 'lucide-react'
 import Navbar from '../components/Navbar'
 import MatchCard from '../components/MatchCard'
 import FeaturedMatchCard from '../components/FeaturedMatchCard'
@@ -9,93 +9,183 @@ import LeaderboardTable from '../components/LeaderboardTable'
 import PredictionModal from '../components/PredictionModal'
 import LiveIndicator from '../components/LiveIndicator'
 import { useAuth } from '../context/AuthContext'
-import { getESTDayKey, getDayLabelEST, formatDateLabelIST } from '../utils/helpers'
+import { getESTDayKey, getDayLabelEST, formatTimeIST, todayESTKey } from '../utils/helpers'
 import API from '../api/axios'
 
+// ── animation variants ───────────────────────────────────────────────────────
 const snapIn = {
-  hidden: { opacity: 0, y: 16 },
+  hidden: { opacity: 0, y: 14 },
   visible: (i) => ({
-    opacity: 1,
-    y: 0,
-    transition: { delay: i * 0.04, duration: 0.35, ease: [0.16, 1, 0.3, 1] },
+    opacity: 1, y: 0,
+    transition: { delay: i * 0.035, duration: 0.32, ease: [0.16, 1, 0.3, 1] },
   }),
 }
-
-const crossfade = {
+const fade = {
   initial: { opacity: 0 },
   animate: { opacity: 1, transition: { duration: 0.15 } },
-  exit: { opacity: 0, transition: { duration: 0.1 } },
+  exit:    { opacity: 0, transition: { duration: 0.1  } },
 }
 
-/** Group matches by their EST calendar day, return ordered array of [dayKey, matches[]] */
+// ── helpers ──────────────────────────────────────────────────────────────────
+
+/** Featured: first LIVE → first upcoming within 24h → next scheduled */
+function pickFeatured(matches) {
+  const now = new Date()
+  const live = matches.filter((m) => m.status === 'LIVE')
+  if (live.length) return live[0]
+
+  const soon = matches
+    .filter((m) => m.status === 'SCHEDULED')
+    .filter((m) => { const d = new Date(m.matchDate) - now; return d > 0 && d <= 86400000 })
+    .sort((a, b) => new Date(a.matchDate) - new Date(b.matchDate))
+  if (soon.length) return soon[0]
+
+  const any = matches
+    .filter((m) => m.status === 'SCHEDULED' && new Date(m.matchDate) > now)
+    .sort((a, b) => new Date(a.matchDate) - new Date(b.matchDate))
+  return any[0] ?? null
+}
+
+/** Group an array of matches by EST day key, returning sorted [dayKey, matches[]] pairs */
 function groupByESTDay(matches) {
   const map = new Map()
   for (const m of matches) {
-    const key = getESTDayKey(m.matchDate)
-    if (!map.has(key)) map.set(key, [])
-    map.get(key).push(m)
+    const k = getESTDayKey(m.matchDate)
+    if (!map.has(k)) map.set(k, [])
+    map.get(k).push(m)
   }
-  return Array.from(map.entries()).sort(([a], [b]) => a.localeCompare(b))
+  return [...map.entries()].sort(([a], [b]) => a.localeCompare(b))
 }
 
-/** Get today's EST day key */
-function todayESTKey() {
-  const nowEST = new Date().toLocaleString('en-CA', { timeZone: 'America/New_York' })
-  return nowEST.split(',')[0].trim()
-}
-
-/** Pick the featured match: first LIVE, else first SCHEDULED within 24h, else most recently started */
-function pickFeaturedMatch(matches) {
-  const now = new Date()
-
-  const live = matches.filter((m) => m.status === 'LIVE')
-  if (live.length > 0) return live[0]
-
-  const upcoming24h = matches
-    .filter((m) => m.status === 'SCHEDULED')
-    .filter((m) => {
-      const diff = new Date(m.matchDate) - now
-      return diff > 0 && diff <= 24 * 3600 * 1000
-    })
-    .sort((a, b) => new Date(a.matchDate) - new Date(b.matchDate))
-  if (upcoming24h.length > 0) return upcoming24h[0]
-
-  // Fallback: next upcoming regardless of window
-  const anyUpcoming = matches
-    .filter((m) => m.status === 'SCHEDULED' && new Date(m.matchDate) > now)
-    .sort((a, b) => new Date(a.matchDate) - new Date(b.matchDate))
-  if (anyUpcoming.length > 0) return anyUpcoming[0]
-
-  return null
-}
-
-/** Get matches that are scheduled today (in EST) */
-function getTodayMatches(matches) {
-  const key = todayESTKey()
-  return matches.filter((m) => getESTDayKey(m.matchDate) === key && m.status === 'SCHEDULED')
-}
-
-export default function RoomDetailPage() {
-  const { roomId } = useParams()
-  const { user } = useAuth()
-  const [room, setRoom] = useState(null)
-  const [matches, setMatches] = useState([])
-  const [leaderboard, setLeaderboard] = useState([])
-  const [predictions, setPredictions] = useState({})
-  const [tab, setTab] = useState('matches')
-  const [selectedMatch, setSelectedMatch] = useState(null)
-  const [viewAllMatch, setViewAllMatch] = useState(null)
-  const [allPredictions, setAllPredictions] = useState([])
+// ── All-Predictions modal ────────────────────────────────────────────────────
+function AllPredictionsModal({ match, roomId, onClose }) {
+  const [preds, setPreds]   = useState([])
   const [loading, setLoading] = useState(true)
 
-  const featuredMatch = useMemo(() => pickFeaturedMatch(matches), [matches])
-  const todayMatches = useMemo(() => getTodayMatches(matches), [matches])
-  const groupedMatches = useMemo(() => groupByESTDay(matches), [matches])
+  useEffect(() => {
+    API.get(`/predictions/room/${roomId}/match/${match.id}`)
+      .then((r) => setPreds(r.data))
+      .finally(() => setLoading(false))
+  }, [match.id, roomId])
 
-  const liveCount = useMemo(() => matches.filter((m) => m.status === 'LIVE').length, [matches])
-  const finishedCount = useMemo(() => matches.filter((m) => m.status === 'FINISHED').length, [matches])
-  const upcomingCount = useMemo(() => matches.filter((m) => m.status === 'SCHEDULED').length, [matches])
+  const isLive     = match.status === 'LIVE'
+  const isFinished = match.status === 'FINISHED'
 
+  return (
+    <motion.div
+      {...fade}
+      className="fixed inset-0 bg-black/65 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+      onClick={onClose}
+    >
+      <motion.div
+        initial={{ opacity: 0, scale: 0.95, y: 12 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        exit={{ opacity: 0, scale: 0.95, y: 12 }}
+        className="bg-[#12121e] border border-white/10 rounded-2xl p-6 w-full max-w-lg max-h-[80vh] overflow-y-auto shadow-2xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-lg font-bold text-white">Room Predictions</h3>
+          <button onClick={onClose} className="p-1.5 hover:bg-white/10 rounded-lg transition-colors">
+            <X size={18} className="text-gray-400" />
+          </button>
+        </div>
+
+        <div className="text-sm text-gray-400 mb-1">{match.homeTeam} vs {match.awayTeam}</div>
+
+        {(isFinished || isLive) && match.homeScore !== null && (
+          <div className={`text-sm font-bold mb-4 ${isLive ? 'text-red-400' : 'text-white'}`}>
+            {isLive ? '🔴 Live: ' : 'Final: '}
+            {match.homeScore} – {match.awayScore}
+          </div>
+        )}
+
+        {loading ? (
+          <div className="py-8 flex justify-center">
+            <div className="w-8 h-8 border-4 border-primary/30 border-t-primary rounded-full animate-spin" />
+          </div>
+        ) : preds.length === 0 ? (
+          <p className="text-gray-500 text-center py-8 text-sm">No predictions for this match yet</p>
+        ) : (
+          <div className="space-y-2.5">
+            {preds.map((p) => (
+              <div
+                key={p.id}
+                className="flex items-center gap-3 bg-white/[0.04] rounded-xl p-3.5 border border-white/[0.04]"
+              >
+                <div className="w-9 h-9 rounded-full bg-gradient-to-br from-primary/30 to-secondary/30 flex items-center justify-center text-white text-xs font-bold overflow-hidden flex-shrink-0">
+                  {p.profilePic
+                    ? <img src={p.profilePic} alt="" className="w-full h-full object-cover" />
+                    : p.username?.[0]?.toUpperCase()
+                  }
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm font-semibold text-white truncate">{p.username}</div>
+                </div>
+                <div className="text-xl font-black text-white tabular-nums">
+                  {p.predictedHomeScore} : {p.predictedAwayScore}
+                </div>
+                <div className="text-right min-w-[60px]">
+                  <div className="text-accent font-bold text-sm">{p.points ?? 0} pts</div>
+                  <div className="text-[10px] text-gray-500">
+                    b:{p.basePoints ?? 0} r:{p.outcomeBonus ?? 0} g:{p.gdBonus ?? 0}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </motion.div>
+    </motion.div>
+  )
+}
+
+// ── Main page ────────────────────────────────────────────────────────────────
+export default function RoomDetailPage() {
+  const { roomId }  = useParams()
+  const { user }    = useAuth()
+
+  const [room, setRoom]               = useState(null)
+  const [matches, setMatches]         = useState([])
+  const [leaderboard, setLeaderboard] = useState([])
+  const [predictions, setPredictions] = useState({})   // matchId → PredictionDTO
+  const [mainTab, setMainTab]         = useState('matches')   // 'matches' | 'leaderboard'
+  const [matchTab, setMatchTab]       = useState('upcoming')  // 'upcoming' | 'finished'
+  const [selectedMatch, setSelectedMatch]     = useState(null)
+  const [viewAllMatch, setViewAllMatch]       = useState(null)
+  const [loading, setLoading]                 = useState(true)
+
+  // ── derived ─────────────────────────────────────────────────────────────
+  const featuredMatch = useMemo(() => pickFeatured(matches), [matches])
+
+  /** Matches still to be played (SCHEDULED + LIVE + SUSPENDED) */
+  const upcomingMatches = useMemo(
+    () => matches.filter((m) => m.status !== 'FINISHED' && m.status !== 'CANCELLED' && m.status !== 'POSTPONED'),
+    [matches]
+  )
+
+  /** Matches that are completely done */
+  const finishedMatches = useMemo(
+    () => matches.filter((m) => m.status === 'FINISHED').sort(
+      (a, b) => new Date(b.matchDate) - new Date(a.matchDate) // newest first
+    ),
+    [matches]
+  )
+
+  /** Today's upcoming matches (EST day, shown in IST) */
+  const todayMatches = useMemo(() => {
+    const key = todayESTKey()
+    return upcomingMatches.filter((m) => getESTDayKey(m.matchDate) === key && m.status === 'SCHEDULED')
+  }, [upcomingMatches])
+
+  const groupedUpcoming  = useMemo(() => groupByESTDay(upcomingMatches), [upcomingMatches])
+  const groupedFinished  = useMemo(() => groupByESTDay(finishedMatches), [finishedMatches])
+
+  const liveCount     = useMemo(() => matches.filter((m) => m.status === 'LIVE').length, [matches])
+  const finishedCount = finishedMatches.length
+  const upcomingCount = upcomingMatches.filter((m) => m.status === 'SCHEDULED').length
+
+  // ── data loading ─────────────────────────────────────────────────────────
   const loadData = useCallback(async () => {
     try {
       const [roomRes, lbRes] = await Promise.all([
@@ -111,9 +201,9 @@ export default function RoomDetailPage() {
           API.get(`/predictions/room/${roomId}/event/${roomRes.data.eventId}`),
         ])
         setMatches(matchRes.data)
-        const predMap = {}
-        predRes.data.forEach((p) => { predMap[p.matchId] = p })
-        setPredictions(predMap)
+        const map = {}
+        predRes.data.forEach((p) => { map[p.matchId] = p })
+        setPredictions(map)
       }
     } finally {
       setLoading(false)
@@ -122,12 +212,77 @@ export default function RoomDetailPage() {
 
   useEffect(() => { loadData() }, [loadData])
 
-  const handleViewAll = async (match) => {
-    const res = await API.get(`/predictions/room/${roomId}/match/${match.id}`)
-    setAllPredictions(res.data)
-    setViewAllMatch(match)
+  // ── helpers for match list rendering ─────────────────────────────────────
+
+  /**
+   * Whether to show the "View all predictions" eye button on a match card.
+   * Show it when:
+   *   - match is FINISHED, OR
+   *   - prediction window is closed (match started/live) AND current user has predicted
+   */
+  const canViewPredictions = (match) => {
+    if (match.status === 'FINISHED') return true
+    if (match.status === 'LIVE') return !!predictions[match.id]
+    return !match.predictionOpen && !!predictions[match.id]
   }
 
+  const renderMatchCard = (match, i) => {
+    const pred         = predictions[match.id]
+    const isFeatured   = featuredMatch?.id === match.id
+    const showViewAll  = canViewPredictions(match)
+    const isFinished   = match.status === 'FINISHED'
+    const isLive       = match.status === 'LIVE'
+
+    return (
+      <motion.div
+        key={match.id}
+        custom={i}
+        initial="hidden"
+        animate="visible"
+        variants={snapIn}
+        className={isFeatured ? 'ring-1 ring-primary/30 rounded-xl' : ''}
+      >
+        <MatchCard match={match} onClick={() => setSelectedMatch(match)}>
+          {/* View all predictions */}
+          {showViewAll && (
+            <button
+              onClick={(e) => { e.stopPropagation(); setViewAllMatch(match) }}
+              className="flex items-center gap-1 text-[10px] uppercase tracking-wider font-semibold text-gray-400 hover:text-white bg-white/5 hover:bg-white/10 px-2.5 py-0.5 rounded transition-colors duration-150"
+            >
+              <Eye size={10} /> Predictions
+            </button>
+          )}
+
+          {/* User's own prediction chip */}
+          {pred && (
+            <span className="text-[11px] font-bold tabular-nums bg-accent/10 text-accent border border-accent/20 px-2.5 py-0.5 rounded">
+              {pred.predictedHomeScore}:{pred.predictedAwayScore}
+              {pred.points != null && <> · {pred.points}pts</>}
+            </span>
+          )}
+
+          {/* Status labels when no prediction */}
+          {!pred && isFinished && (
+            <span className="text-[10px] font-semibold text-gray-500 bg-white/5 px-2 py-0.5 rounded">
+              Ended
+            </span>
+          )}
+          {!pred && isLive && (
+            <span className="text-[10px] font-semibold text-red-400 bg-red-500/10 px-2 py-0.5 rounded">
+              In Play
+            </span>
+          )}
+          {!pred && !isFinished && !isLive && !match.predictionOpen && (
+            <span className="text-[10px] font-semibold text-gray-500 bg-white/5 px-2 py-0.5 rounded">
+              Closed
+            </span>
+          )}
+        </MatchCard>
+      </motion.div>
+    )
+  }
+
+  // ── loading / error ───────────────────────────────────────────────────────
   if (loading) {
     return (
       <div className="min-h-screen bg-[#0a0a12]">
@@ -138,17 +293,17 @@ export default function RoomDetailPage() {
       </div>
     )
   }
-
   if (!room) return null
 
+  // ── render ────────────────────────────────────────────────────────────────
   return (
     <div className="min-h-screen bg-[#0a0a12]">
       <Navbar />
       <div className="pt-20 pb-16 max-w-4xl mx-auto px-5">
 
-        {/* ── Header ──────────────────────────────────────────────────────── */}
-        <motion.div {...crossfade} className="mb-10">
-          <p className="text-[11px] uppercase tracking-[0.2em] text-gray-500 mb-2">Event Room</p>
+        {/* ── Room header ────────────────────────────────────────────── */}
+        <motion.div {...fade} className="mb-10">
+          <p className="text-[11px] uppercase tracking-[0.2em] text-gray-500 mb-1">Event Room</p>
           <h1 className="text-3xl font-extrabold text-white tracking-tight mb-4">{room.name}</h1>
 
           <div className="flex flex-wrap items-center gap-3">
@@ -164,28 +319,19 @@ export default function RoomDetailPage() {
             )}
 
             <span className="text-xs text-gray-500">
-              {finishedCount} played &middot; {upcomingCount} upcoming
+              {finishedCount} played · {upcomingCount} upcoming
             </span>
-
-            {featuredMatch && (featuredMatch.status === 'LIVE' || featuredMatch.status === 'SCHEDULED') && (
-              <button
-                onClick={() => { setTab('matches'); setSelectedMatch(featuredMatch) }}
-                className="flex items-center gap-1.5 text-xs font-semibold text-white bg-primary hover:bg-primary-light px-4 py-1.5 rounded-full shadow-lg shadow-primary/20 transition-all duration-200 hover:scale-105 active:scale-95 ml-auto"
-              >
-                <Zap size={12} /> Predict Now
-              </button>
-            )}
           </div>
         </motion.div>
 
-        {/* ── Tabs ─────────────────────────────────────────────────────────── */}
+        {/* ── Main tabs ──────────────────────────────────────────────── */}
         <div className="flex gap-1 mb-8 bg-white/[0.03] p-1 rounded-xl w-fit">
           {['matches', 'leaderboard'].map((t) => (
             <button
               key={t}
-              onClick={() => setTab(t)}
+              onClick={() => setMainTab(t)}
               className={`text-sm font-semibold capitalize px-5 py-2 rounded-lg transition-all duration-200 ${
-                tab === t
+                mainTab === t
                   ? 'text-white bg-primary/20 shadow-sm'
                   : 'text-gray-500 hover:text-gray-300 hover:bg-white/[0.03]'
               }`}
@@ -197,46 +343,52 @@ export default function RoomDetailPage() {
 
         <AnimatePresence mode="wait">
 
-          {/* ── Matches tab ──────────────────────────────────────────────────── */}
-          {tab === 'matches' && (
-            <motion.div key="matches" {...crossfade}>
+          {/* ═══════════════════════════════════════════════════════════
+              MATCHES TAB
+          ═══════════════════════════════════════════════════════════ */}
+          {mainTab === 'matches' && (
+            <motion.div key="matches" {...fade}>
               {matches.length === 0 ? (
-                <div className="py-16 text-center">
-                  <p className="text-gray-500 text-sm">No matches scheduled yet</p>
-                </div>
+                <div className="py-16 text-center text-gray-500 text-sm">No matches scheduled yet</div>
               ) : (
                 <>
-                  {/* Featured match card */}
+                  {/* ── Featured match ─────────────────────────────── */}
                   {featuredMatch && (
                     <div className="mb-8">
                       <div className="flex items-center gap-2 mb-3">
-                        {featuredMatch.status === 'LIVE' ? (
-                          <LiveIndicator />
-                        ) : (
-                          <Zap size={14} className="text-primary" />
-                        )}
+                        {featuredMatch.status === 'LIVE'
+                          ? <LiveIndicator />
+                          : <span className="w-2 h-2 rounded-full bg-primary/60" />
+                        }
                         <span className="text-xs font-bold uppercase tracking-[0.15em] text-gray-400">
-                          {featuredMatch.status === 'LIVE' ? 'Live Match' : 'Next Up'}
+                          {featuredMatch.status === 'LIVE' ? 'Live Now' : 'Next Up'}
                         </span>
                       </div>
                       <FeaturedMatchCard
                         match={featuredMatch}
                         onClick={() => setSelectedMatch(featuredMatch)}
                       />
+                      {/* User's prediction on the featured match */}
                       {predictions[featuredMatch.id] && (
                         <div className="mt-2 flex items-center gap-2 px-1">
                           <span className="text-xs text-gray-500">Your pick:</span>
                           <span className="text-xs font-bold text-accent">
-                            {predictions[featuredMatch.id].predictedHomeScore} : {predictions[featuredMatch.id].predictedAwayScore}
+                            {predictions[featuredMatch.id].predictedHomeScore}
+                            {' : '}
+                            {predictions[featuredMatch.id].predictedAwayScore}
                           </span>
-                          <span className="text-xs text-gray-500">·</span>
-                          <span className="text-xs font-bold text-accent">{predictions[featuredMatch.id].points} pts</span>
+                          {predictions[featuredMatch.id].points != null && (
+                            <>
+                              <span className="text-xs text-gray-500">·</span>
+                              <span className="text-xs font-bold text-accent">{predictions[featuredMatch.id].points} pts</span>
+                            </>
+                          )}
                         </div>
                       )}
                     </div>
                   )}
 
-                  {/* Today's matches strip */}
+                  {/* ── Today's matches horizontal strip ───────────── */}
                   {todayMatches.length > 0 && (
                     <div className="mb-8">
                       <div className="flex items-center gap-2 mb-4">
@@ -248,7 +400,7 @@ export default function RoomDetailPage() {
                       </div>
                       <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-hide">
                         {todayMatches.map((match) => {
-                          const pred = predictions[match.id]
+                          const pred       = predictions[match.id]
                           const isFeatured = featuredMatch?.id === match.id
                           return (
                             <motion.div
@@ -257,46 +409,32 @@ export default function RoomDetailPage() {
                               whileTap={{ scale: 0.98 }}
                               onClick={() => setSelectedMatch(match)}
                               className={`
-                                flex-shrink-0 cursor-pointer rounded-2xl border p-4 min-w-[200px] max-w-[220px]
+                                flex-shrink-0 cursor-pointer rounded-2xl border p-4 min-w-[190px] max-w-[210px]
                                 transition-all duration-200
                                 ${isFeatured
                                   ? 'border-primary/40 bg-primary/10'
-                                  : 'border-white/8 bg-white/[0.03] hover:border-primary/25 hover:bg-white/[0.05]'
+                                  : 'border-white/8 bg-white/[0.03] hover:border-primary/25'
                                 }
                               `}
                             >
-                              {/* Time */}
                               <div className="text-[10px] text-gray-500 mb-2 font-semibold uppercase tracking-wider">
-                                {new Date(match.matchDate).toLocaleTimeString('en-IN', {
-                                  timeZone: 'Asia/Kolkata',
-                                  hour: '2-digit',
-                                  minute: '2-digit',
-                                  hour12: true,
-                                })} IST
+                                {formatTimeIST(match.matchDate)} IST
                               </div>
-
-                              {/* Teams */}
                               <div className="flex items-center gap-2 mb-1">
-                                {match.homeCrest && (
-                                  <img src={match.homeCrest} alt="" className="w-5 h-5 object-contain flex-shrink-0" />
-                                )}
+                                {match.homeCrest && <img src={match.homeCrest} alt="" className="w-5 h-5 object-contain flex-shrink-0" />}
                                 <span className="text-xs font-semibold text-white truncate">{match.homeTeam}</span>
                               </div>
                               <div className="flex items-center gap-2">
-                                {match.awayCrest && (
-                                  <img src={match.awayCrest} alt="" className="w-5 h-5 object-contain flex-shrink-0" />
-                                )}
+                                {match.awayCrest && <img src={match.awayCrest} alt="" className="w-5 h-5 object-contain flex-shrink-0" />}
                                 <span className="text-xs font-semibold text-white truncate">{match.awayTeam}</span>
                               </div>
-
-                              {/* Prediction badge */}
                               {pred ? (
                                 <div className="mt-2 text-[10px] font-bold text-accent bg-accent/10 rounded px-1.5 py-0.5 inline-block">
                                   {pred.predictedHomeScore}:{pred.predictedAwayScore}
                                 </div>
                               ) : match.predictionOpen ? (
                                 <div className="mt-2 text-[10px] font-bold text-primary bg-primary/10 rounded px-1.5 py-0.5 inline-block">
-                                  Predict
+                                  Open
                                 </div>
                               ) : null}
                             </motion.div>
@@ -306,101 +444,126 @@ export default function RoomDetailPage() {
                     </div>
                   )}
 
-                  {/* All matches grouped by EST day */}
-                  <div className="space-y-8">
-                    {groupedMatches.map(([dayKey, dayMatches]) => {
-                      const label = getDayLabelEST(dayMatches[0].matchDate)
-                      const isToday = dayKey === todayESTKey()
-                      return (
-                        <div key={dayKey}>
-                          {/* Day header */}
-                          <div className="flex items-center gap-3 mb-4">
-                            <div className={`flex-1 h-px ${isToday ? 'bg-gradient-to-r from-accent/40 to-transparent' : 'bg-gradient-to-r from-white/10 to-transparent'}`} />
-                            <span className={`text-[11px] font-bold uppercase tracking-[0.15em] ${isToday ? 'text-accent/70' : 'text-gray-500'}`}>
-                              {label}
-                            </span>
-                            <div className={`flex-1 h-px ${isToday ? 'bg-gradient-to-l from-accent/40 to-transparent' : 'bg-gradient-to-l from-white/10 to-transparent'}`} />
-                          </div>
-
-                          <div className="space-y-3">
-                            {dayMatches.map((match, i) => {
-                              const pred = predictions[match.id]
-                              const isFeaturedMatch = featuredMatch?.id === match.id
-                              return (
-                                <motion.div
-                                  key={match.id}
-                                  custom={i}
-                                  initial="hidden"
-                                  animate="visible"
-                                  variants={snapIn}
-                                  className={isFeaturedMatch ? 'ring-1 ring-primary/30 rounded-xl' : ''}
-                                >
-                                  <MatchCard
-                                    match={match}
-                                    onClick={() => setSelectedMatch(match)}
-                                  >
-                                    {/* View all predictions button */}
-                                    {(!match.predictionOpen || pred) && (
-                                      <button
-                                        onClick={(e) => { e.stopPropagation(); handleViewAll(match) }}
-                                        className="flex items-center gap-1 text-[10px] uppercase tracking-wider font-semibold text-gray-400 hover:text-white bg-white/5 hover:bg-white/10 px-2.5 py-0.5 rounded transition-colors duration-150"
-                                      >
-                                        <Eye size={10} /> All
-                                      </button>
-                                    )}
-
-                                    {/* Closed prediction status */}
-                                    {!match.predictionOpen && match.status === 'SCHEDULED' && !pred && (
-                                      <span className="text-[10px] font-semibold text-gray-500 bg-white/5 px-2 py-0.5 rounded">
-                                        Closed
-                                      </span>
-                                    )}
-
-                                    {/* Finished label */}
-                                    {match.status === 'FINISHED' && !pred && (
-                                      <span className="text-[10px] font-semibold text-gray-500 bg-white/5 px-2 py-0.5 rounded">
-                                        Match has ended
-                                      </span>
-                                    )}
-
-                                    {/* Live label without prediction */}
-                                    {match.status === 'LIVE' && !pred && (
-                                      <span className="text-[10px] font-semibold text-red-400 bg-red-500/10 px-2 py-0.5 rounded">
-                                        Match has ended
-                                      </span>
-                                    )}
-
-                                    {/* User's prediction */}
-                                    {pred && (
-                                      <span className="text-[11px] font-bold tabular-nums bg-accent/10 text-accent border border-accent/20 px-2.5 py-0.5 rounded">
-                                        {pred.predictedHomeScore}:{pred.predictedAwayScore} &middot; {pred.points}pts
-                                      </span>
-                                    )}
-                                  </MatchCard>
-                                </motion.div>
-                              )
-                            })}
-                          </div>
-                        </div>
-                      )
-                    })}
+                  {/* ── Upcoming / Finished sub-tabs ───────────────── */}
+                  <div className="flex items-center gap-1 mb-6 bg-white/[0.025] p-1 rounded-xl w-fit">
+                    <button
+                      onClick={() => setMatchTab('upcoming')}
+                      className={`flex items-center gap-1.5 text-xs font-semibold px-4 py-2 rounded-lg transition-all ${
+                        matchTab === 'upcoming'
+                          ? 'text-white bg-white/10'
+                          : 'text-gray-500 hover:text-gray-300'
+                      }`}
+                    >
+                      {liveCount > 0 && <LiveIndicator />}
+                      Upcoming & Live
+                      {upcomingCount > 0 && (
+                        <span className="ml-1 text-[10px] bg-white/10 text-gray-400 rounded-full px-1.5 py-0.5">
+                          {upcomingMatches.length}
+                        </span>
+                      )}
+                    </button>
+                    <button
+                      onClick={() => setMatchTab('finished')}
+                      className={`flex items-center gap-1.5 text-xs font-semibold px-4 py-2 rounded-lg transition-all ${
+                        matchTab === 'finished'
+                          ? 'text-white bg-white/10'
+                          : 'text-gray-500 hover:text-gray-300'
+                      }`}
+                    >
+                      <CheckCircle2 size={12} />
+                      Finished
+                      {finishedCount > 0 && (
+                        <span className="ml-1 text-[10px] bg-white/10 text-gray-400 rounded-full px-1.5 py-0.5">
+                          {finishedCount}
+                        </span>
+                      )}
+                    </button>
                   </div>
+
+                  <AnimatePresence mode="wait">
+
+                    {/* ── Upcoming tab content ─────────────────────── */}
+                    {matchTab === 'upcoming' && (
+                      <motion.div key="upcoming" {...fade} className="space-y-8">
+                        {upcomingMatches.length === 0 ? (
+                          <div className="py-10 text-center text-gray-500 text-sm">
+                            No upcoming matches
+                          </div>
+                        ) : (
+                          groupedUpcoming.map(([dayKey, dayMatches]) => {
+                            const label   = getDayLabelEST(dayMatches[0].matchDate)
+                            const isToday = dayKey === todayESTKey()
+                            return (
+                              <div key={dayKey}>
+                                <div className="flex items-center gap-3 mb-4">
+                                  <div className={`flex-1 h-px bg-gradient-to-r ${isToday ? 'from-accent/40' : 'from-white/10'} to-transparent`} />
+                                  <span className={`text-[11px] font-bold uppercase tracking-[0.15em] ${isToday ? 'text-accent/70' : 'text-gray-500'}`}>
+                                    {label}
+                                  </span>
+                                  <div className={`flex-1 h-px bg-gradient-to-l ${isToday ? 'from-accent/40' : 'from-white/10'} to-transparent`} />
+                                </div>
+                                <div className="space-y-3">
+                                  {dayMatches.map((m, i) => renderMatchCard(m, i))}
+                                </div>
+                              </div>
+                            )
+                          })
+                        )}
+                      </motion.div>
+                    )}
+
+                    {/* ── Finished tab content ─────────────────────── */}
+                    {matchTab === 'finished' && (
+                      <motion.div key="finished" {...fade} className="space-y-8">
+                        {finishedMatches.length === 0 ? (
+                          <div className="py-10 text-center text-gray-500 text-sm">
+                            No finished matches yet
+                          </div>
+                        ) : (
+                          groupedFinished.map(([dayKey, dayMatches]) => {
+                            const label = getDayLabelEST(dayMatches[0].matchDate)
+                            return (
+                              <div key={dayKey}>
+                                <div className="flex items-center gap-3 mb-4">
+                                  <div className="flex-1 h-px bg-gradient-to-r from-white/10 to-transparent" />
+                                  <span className="text-[11px] font-bold uppercase tracking-[0.15em] text-gray-500">
+                                    {label}
+                                  </span>
+                                  <div className="flex-1 h-px bg-gradient-to-l from-white/10 to-transparent" />
+                                </div>
+                                <div className="space-y-3">
+                                  {dayMatches.map((m, i) => renderMatchCard(m, i))}
+                                </div>
+                              </div>
+                            )
+                          })
+                        )}
+                      </motion.div>
+                    )}
+
+                  </AnimatePresence>
                 </>
               )}
             </motion.div>
           )}
 
-          {/* ── Leaderboard tab ─────────────────────────────────────────────── */}
-          {tab === 'leaderboard' && (
-            <motion.div key="leaderboard" {...crossfade}>
+          {/* ═══════════════════════════════════════════════════════════
+              LEADERBOARD TAB
+          ═══════════════════════════════════════════════════════════ */}
+          {mainTab === 'leaderboard' && (
+            <motion.div key="leaderboard" {...fade}>
               <LeaderboardTable entries={leaderboard} />
             </motion.div>
           )}
-        </AnimatePresence>
 
-        {/* ── Prediction modal ─────────────────────────────────────────────── */}
+        </AnimatePresence>
+      </div>
+
+      {/* ── Prediction modal ──────────────────────────────────────────────── */}
+      <AnimatePresence>
         {selectedMatch && (
           <PredictionModal
+            key={selectedMatch.id}
             match={selectedMatch}
             roomId={Number(roomId)}
             eventId={room.eventId}
@@ -409,78 +572,19 @@ export default function RoomDetailPage() {
             onSaved={loadData}
           />
         )}
+      </AnimatePresence>
 
-        {/* ── View all predictions modal ──────────────────────────────────── */}
-        <AnimatePresence>
-          {viewAllMatch && (
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4"
-              onClick={() => setViewAllMatch(null)}
-            >
-              <motion.div
-                initial={{ opacity: 0, scale: 0.95, y: 12 }}
-                animate={{ opacity: 1, scale: 1, y: 0 }}
-                exit={{ opacity: 0, scale: 0.95, y: 12 }}
-                className="bg-[#12121e] border border-white/10 rounded-2xl p-6 w-full max-w-lg max-h-[80vh] overflow-y-auto shadow-2xl"
-                onClick={(e) => e.stopPropagation()}
-              >
-                <div className="flex items-center justify-between mb-5">
-                  <h3 className="text-lg font-bold text-white">Room Predictions</h3>
-                  <button onClick={() => setViewAllMatch(null)} className="p-1.5 hover:bg-white/10 rounded-lg transition-colors">
-                    <X size={18} className="text-gray-400" />
-                  </button>
-                </div>
-
-                <div className="text-sm text-gray-400 mb-1">
-                  {viewAllMatch.homeTeam} vs {viewAllMatch.awayTeam}
-                </div>
-                {viewAllMatch.status === 'FINISHED' && viewAllMatch.homeScore !== null && (
-                  <div className="text-sm text-white font-bold mb-5">
-                    Final: {viewAllMatch.homeScore} – {viewAllMatch.awayScore}
-                  </div>
-                )}
-                {viewAllMatch.status === 'LIVE' && viewAllMatch.homeScore !== null && (
-                  <div className="flex items-center gap-2 text-sm text-red-400 font-bold mb-5">
-                    <span className="w-1.5 h-1.5 bg-red-500 rounded-full animate-live-blink" />
-                    Live: {viewAllMatch.homeScore} – {viewAllMatch.awayScore}
-                  </div>
-                )}
-
-                {allPredictions.length === 0 ? (
-                  <p className="text-gray-500 text-center py-8">No predictions for this match</p>
-                ) : (
-                  <div className="space-y-2.5">
-                    {allPredictions.map((p) => (
-                      <div key={p.id} className="flex items-center gap-3 bg-white/[0.04] rounded-xl p-3.5 border border-white/[0.04]">
-                        <div className="w-9 h-9 rounded-full bg-gradient-to-br from-primary/30 to-secondary/30 flex items-center justify-center text-white text-xs font-bold overflow-hidden flex-shrink-0">
-                          {p.profilePic ? (
-                            <img src={p.profilePic} alt="" className="w-full h-full object-cover" />
-                          ) : (
-                            p.username?.[0]?.toUpperCase()
-                          )}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <div className="text-sm font-semibold text-white truncate">{p.username}</div>
-                        </div>
-                        <div className="text-xl font-black text-white tabular-nums">
-                          {p.predictedHomeScore} : {p.predictedAwayScore}
-                        </div>
-                        <div className="text-right min-w-[60px]">
-                          <div className="text-accent font-bold text-sm">{p.points} pts</div>
-                          <div className="text-[10px] text-gray-500">b:{p.basePoints} r:{p.outcomeBonus} g:{p.gdBonus}</div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </motion.div>
-            </motion.div>
-          )}
-        </AnimatePresence>
-      </div>
+      {/* ── All predictions modal ─────────────────────────────────────────── */}
+      <AnimatePresence>
+        {viewAllMatch && (
+          <AllPredictionsModal
+            key={viewAllMatch.id}
+            match={viewAllMatch}
+            roomId={roomId}
+            onClose={() => setViewAllMatch(null)}
+          />
+        )}
+      </AnimatePresence>
     </div>
   )
 }

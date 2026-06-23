@@ -3,10 +3,11 @@ import LiveIndicator from './LiveIndicator'
 import { formatTimeIST, timeUntil } from '../utils/helpers'
 
 export default function MatchCard({ match, onClick, children }) {
-  const isLive = match.status === 'LIVE'
-  const isFinished = match.status === 'FINISHED'
+  const isLive      = match.status === 'LIVE'
+  const isFinished  = match.status === 'FINISHED'
   const isPostponed = match.status === 'POSTPONED'
   const isCancelled = match.status === 'CANCELLED'
+  // Only show score when the match is actually in play or done
   const hasScore = (isLive || isFinished) && match.homeScore !== null
 
   return (
@@ -14,7 +15,7 @@ export default function MatchCard({ match, onClick, children }) {
       onClick={onClick}
       className={`match-card cursor-pointer group ${isLive ? 'is-live' : ''}`}
     >
-      {/* Header */}
+      {/* ── Header row ────────────────────────────────────────────────── */}
       <div className="flex items-center justify-between px-5 py-2.5">
         <div className="flex items-center gap-2">
           {match.groupName && (
@@ -28,8 +29,11 @@ export default function MatchCard({ match, onClick, children }) {
             </span>
           )}
         </div>
+
         <div className="flex items-center gap-2">
+          {/* Slot for parent-injected badges (prediction chip, view-all btn…) */}
           {children}
+
           {isLive ? (
             <LiveIndicator />
           ) : isFinished ? (
@@ -53,23 +57,19 @@ export default function MatchCard({ match, onClick, children }) {
         </div>
       </div>
 
-      {/* Main body */}
+      {/* ── Teams + score ─────────────────────────────────────────────── */}
       <div className="flex items-center px-5 py-4 gap-3">
-        {/* Home team */}
+        {/* Home */}
         <div className="flex-1 flex items-center gap-3 min-w-0">
           {match.homeCrest && (
-            <img
-              src={match.homeCrest}
-              alt=""
-              className="w-8 h-8 object-contain flex-shrink-0 drop-shadow-sm"
-            />
+            <img src={match.homeCrest} alt="" className="w-8 h-8 object-contain flex-shrink-0 drop-shadow-sm" />
           )}
           <span className="font-semibold text-[15px] text-white leading-tight truncate">
             {match.homeTeam}
           </span>
         </div>
 
-        {/* Score / Time */}
+        {/* Score / time */}
         <div className="flex flex-col items-center justify-center min-w-[110px] px-2">
           {hasScore ? (
             <div className="flex items-center gap-2">
@@ -91,22 +91,18 @@ export default function MatchCard({ match, onClick, children }) {
           )}
         </div>
 
-        {/* Away team */}
+        {/* Away */}
         <div className="flex-1 flex items-center gap-3 justify-end min-w-0">
           <span className="font-semibold text-[15px] text-white leading-tight truncate text-right">
             {match.awayTeam}
           </span>
           {match.awayCrest && (
-            <img
-              src={match.awayCrest}
-              alt=""
-              className="w-8 h-8 object-contain flex-shrink-0 drop-shadow-sm"
-            />
+            <img src={match.awayCrest} alt="" className="w-8 h-8 object-contain flex-shrink-0 drop-shadow-sm" />
           )}
         </div>
       </div>
 
-      {/* Venue */}
+      {/* ── Venue ─────────────────────────────────────────────────────── */}
       {match.venue && (
         <div className="flex items-center gap-1.5 px-5 py-2 border-t border-white/[0.04]">
           <MapPin size={10} className="text-gray-600 flex-shrink-0" />

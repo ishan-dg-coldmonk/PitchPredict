@@ -9,12 +9,20 @@ export default function SignupPage() {
   const { user, signup, loading } = useAuth()
   const navigate = useNavigate()
   const fileRef = useRef()
-  const [form, setForm] = useState({ fullName: '', username: '', email: '', password: '', profilePic: '' })
+  const [form, setForm] = useState({
+    fullName: '', username: '', email: '', password: '', profilePic: '',
+  })
   const [showPw, setShowPw] = useState(false)
   const [submitting, setSubmitting] = useState(false)
+  const [errors, setErrors] = useState({})
 
   if (loading) return null
   if (user) return <Navigate to="/home" replace />
+
+  const set = (field, value) => {
+    setForm((f) => ({ ...f, [field]: value }))
+    setErrors((e) => ({ ...e, [field]: '' }))
+  }
 
   const handleFile = (e) => {
     const file = e.target.files[0]
@@ -24,27 +32,52 @@ export default function SignupPage() {
       return
     }
     const reader = new FileReader()
-    reader.onload = () => setForm((f) => ({ ...f, profilePic: reader.result }))
+    reader.onload = () => set('profilePic', reader.result)
     reader.readAsDataURL(file)
+  }
+
+  const validate = () => {
+    const errs = {}
+    if (!form.username.trim()) errs.username = 'Username is required'
+    else if (form.username.trim().length < 3) errs.username = 'Username must be at least 3 characters'
+    if (!form.email.trim()) errs.email = 'Email is required'
+    else if (!/\S+@\S+\.\S+/.test(form.email)) errs.email = 'Enter a valid email'
+    if (!form.password) errs.password = 'Password is required'
+    else if (form.password.length < 6) errs.password = 'Password must be at least 6 characters'
+    return errs
   }
 
   const handleSubmit = async (e) => {
     e.preventDefault()
-    if (form.password.length < 6) {
-      toast.error('Password must be at least 6 characters')
+    const errs = validate()
+    if (Object.keys(errs).length > 0) {
+      setErrors(errs)
+      toast.error(Object.values(errs)[0])
       return
     }
+    setErrors({})
     setSubmitting(true)
     try {
       await signup(form)
-      toast.success('Account created!')
+      toast.success('Account created! Welcome 🎉')
       navigate('/home')
     } catch (err) {
-      toast.error(err.response?.data?.error || 'Signup failed')
+      const msg = err.response?.data?.error || 'Signup failed. Please try again.'
+      toast.error(msg)
+
+      // Map server error messages to specific field highlights
+      if (msg.toLowerCase().includes('username')) {
+        setErrors({ username: msg })
+      } else if (msg.toLowerCase().includes('email')) {
+        setErrors({ email: msg })
+      }
     } finally {
       setSubmitting(false)
     }
   }
+
+  const fieldClass = (field) =>
+    `input-field ${errors[field] ? 'border-red-500/60 focus:border-red-500/80 focus:ring-red-500/20' : ''}`
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-navy via-navy-light to-navy-lighter flex items-center justify-center p-4">
@@ -67,7 +100,8 @@ export default function SignupPage() {
 
         <h1 className="text-2xl font-bold text-white text-center mb-6">Create Account</h1>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={handleSubmit} className="space-y-3" noValidate>
+          {/* Avatar */}
           <div className="flex justify-center mb-2">
             <div
               onClick={() => fileRef.current?.click()}
@@ -82,47 +116,76 @@ export default function SignupPage() {
             <input ref={fileRef} type="file" accept="image/*" onChange={handleFile} className="hidden" />
           </div>
 
+          {/* Full name */}
           <input
             type="text"
-            placeholder="Full Name"
+            placeholder="Full Name (optional)"
             value={form.fullName}
-            onChange={(e) => setForm((f) => ({ ...f, fullName: e.target.value }))}
+            onChange={(e) => set('fullName', e.target.value)}
             className="input-field"
+            autoComplete="name"
           />
-          <input
-            type="text"
-            placeholder="Username"
-            value={form.username}
-            onChange={(e) => setForm((f) => ({ ...f, username: e.target.value }))}
-            className="input-field"
-            required
-          />
-          <input
-            type="email"
-            placeholder="Email"
-            value={form.email}
-            onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}
-            className="input-field"
-            required
-          />
-          <div className="relative">
+
+          {/* Username */}
+          <div>
             <input
-              type={showPw ? 'text' : 'password'}
-              placeholder="Password (min 6 characters)"
-              value={form.password}
-              onChange={(e) => setForm((f) => ({ ...f, password: e.target.value }))}
-              className="input-field pr-12"
-              required
+              type="text"
+              placeholder="Username *"
+              value={form.username}
+              onChange={(e) => set('username', e.target.value)}
+              className={fieldClass('username')}
+              autoComplete="username"
+              autoFocus
             />
-            <button
-              type="button"
-              onClick={() => setShowPw(!showPw)}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300 transition-colors"
-            >
-              {showPw ? <EyeOff size={18} /> : <Eye size={18} />}
-            </button>
+            {errors.username && (
+              <p className="text-red-400 text-xs mt-1 ml-1">{errors.username}</p>
+            )}
           </div>
-          <button type="submit" disabled={submitting} className="btn-primary w-full flex items-center justify-center">
+
+          {/* Email */}
+          <div>
+            <input
+              type="email"
+              placeholder="Email *"
+              value={form.email}
+              onChange={(e) => set('email', e.target.value)}
+              className={fieldClass('email')}
+              autoComplete="email"
+            />
+            {errors.email && (
+              <p className="text-red-400 text-xs mt-1 ml-1">{errors.email}</p>
+            )}
+          </div>
+
+          {/* Password */}
+          <div>
+            <div className="relative">
+              <input
+                type={showPw ? 'text' : 'password'}
+                placeholder="Password (min 6 characters) *"
+                value={form.password}
+                onChange={(e) => set('password', e.target.value)}
+                className={`${fieldClass('password')} pr-12`}
+                autoComplete="new-password"
+              />
+              <button
+                type="button"
+                onClick={() => setShowPw(!showPw)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300 transition-colors"
+              >
+                {showPw ? <EyeOff size={18} /> : <Eye size={18} />}
+              </button>
+            </div>
+            {errors.password && (
+              <p className="text-red-400 text-xs mt-1 ml-1">{errors.password}</p>
+            )}
+          </div>
+
+          <button
+            type="submit"
+            disabled={submitting}
+            className="btn-primary w-full flex items-center justify-center mt-1"
+          >
             {submitting ? (
               <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
             ) : 'Create Account'}
@@ -131,7 +194,9 @@ export default function SignupPage() {
 
         <p className="text-center text-sm text-gray-500 mt-6">
           Already have an account?{' '}
-          <Link to="/login" className="text-primary hover:text-primary-light transition-colors">Log in</Link>
+          <Link to="/login" className="text-primary hover:text-primary-light transition-colors">
+            Log in
+          </Link>
         </p>
       </motion.div>
     </div>

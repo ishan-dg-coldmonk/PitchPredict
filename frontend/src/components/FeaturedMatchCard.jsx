@@ -1,15 +1,14 @@
 import { motion } from 'framer-motion'
-import { Zap, MapPin, Clock } from 'lucide-react'
+import { MapPin, Clock } from 'lucide-react'
 import LiveIndicator from './LiveIndicator'
 import { formatDateTimeIST, timeUntil } from '../utils/helpers'
 
 export default function FeaturedMatchCard({ match, onClick }) {
   if (!match) return null
 
-  const isLive = match.status === 'LIVE'
+  const isLive     = match.status === 'LIVE'
   const isFinished = match.status === 'FINISHED'
-  const hasScore = (isLive || isFinished) && match.homeScore !== null
-  const canPredict = match.predictionOpen && match.status === 'SCHEDULED'
+  const hasScore   = (isLive || isFinished) && match.homeScore !== null
 
   return (
     <motion.div
@@ -18,24 +17,16 @@ export default function FeaturedMatchCard({ match, onClick }) {
       transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
       onClick={onClick}
       className={`
-        relative w-full cursor-pointer rounded-2xl overflow-hidden
-        border transition-all duration-300 group
+        relative w-full cursor-pointer rounded-2xl overflow-hidden border
+        transition-all duration-300 group
         ${isLive
           ? 'border-red-500/30 bg-gradient-to-br from-red-950/40 via-[#12121e] to-[#0f0f1a] shadow-xl shadow-red-900/20 hover:border-red-500/50'
           : 'border-primary/20 bg-gradient-to-br from-primary/10 via-[#12121e] to-[#0f0f1a] shadow-xl shadow-primary/10 hover:border-primary/40'
         }
       `}
     >
-      {/* Ambient glow backdrop */}
-      <div
-        className={`
-          absolute inset-0 opacity-20 pointer-events-none
-          ${isLive
-            ? 'bg-gradient-radial from-red-600/30 via-transparent to-transparent'
-            : 'bg-gradient-radial from-primary/20 via-transparent to-transparent'
-          }
-        `}
-      />
+      {/* Ambient glow */}
+      <div className={`absolute inset-0 opacity-20 pointer-events-none bg-radial-glow ${isLive ? 'from-red-600/30' : 'from-primary/20'}`} />
 
       {/* Top strip */}
       <div className="relative flex items-center justify-between px-6 pt-5 pb-3">
@@ -50,17 +41,8 @@ export default function FeaturedMatchCard({ match, onClick }) {
               Group {match.groupName}
             </span>
           )}
-          <span className="text-[10px] font-semibold text-gray-500 uppercase tracking-widest">
-            Featured
-          </span>
         </div>
-
         <div className="flex items-center gap-2">
-          {canPredict && (
-            <span className="flex items-center gap-1.5 text-[11px] font-bold text-accent bg-accent/10 border border-accent/20 px-3 py-1 rounded-full">
-              <Zap size={10} className="fill-accent" /> Predict Now
-            </span>
-          )}
           {isLive && <LiveIndicator />}
           {isFinished && (
             <span className="text-[10px] font-bold uppercase tracking-widest text-gray-400 bg-white/8 px-2.5 py-1 rounded-full">
@@ -70,14 +52,12 @@ export default function FeaturedMatchCard({ match, onClick }) {
         </div>
       </div>
 
-      {/* Main match area */}
+      {/* Teams */}
       <div className="relative flex items-center justify-between px-6 py-6 gap-4">
-        {/* Home team */}
+        {/* Home */}
         <div className="flex-1 flex flex-col items-center gap-3">
           {match.homeCrest ? (
-            <div className="w-20 h-20 flex items-center justify-center drop-shadow-2xl">
-              <img src={match.homeCrest} alt={match.homeTeam} className="w-full h-full object-contain" />
-            </div>
+            <img src={match.homeCrest} alt={match.homeTeam} className="w-20 h-20 object-contain drop-shadow-2xl" />
           ) : (
             <div className="w-20 h-20 rounded-full bg-white/10 flex items-center justify-center text-2xl font-black text-white/60">
               {match.homeTeam?.[0]}
@@ -86,23 +66,17 @@ export default function FeaturedMatchCard({ match, onClick }) {
           <span className="text-base font-bold text-white text-center leading-tight px-2">
             {match.homeTeam}
           </span>
-          {match.homeFlag && (
-            <span className="text-2xl">{match.homeFlag}</span>
-          )}
+          {match.homeFlag && <span className="text-2xl">{match.homeFlag}</span>}
         </div>
 
-        {/* Center: Score or Time */}
+        {/* Centre */}
         <div className="flex flex-col items-center justify-center min-w-[130px]">
           {hasScore ? (
             <>
               <div className="flex items-center gap-3">
-                <span className={`text-5xl font-black tabular-nums leading-none ${isLive ? 'text-white' : 'text-white/95'}`}>
-                  {match.homeScore}
-                </span>
+                <span className="text-5xl font-black tabular-nums leading-none text-white">{match.homeScore}</span>
                 <span className="text-2xl font-bold text-white/20">:</span>
-                <span className={`text-5xl font-black tabular-nums leading-none ${isLive ? 'text-white' : 'text-white/95'}`}>
-                  {match.awayScore}
-                </span>
+                <span className="text-5xl font-black tabular-nums leading-none text-white">{match.awayScore}</span>
               </div>
               {isLive && (
                 <div className="mt-2 flex items-center gap-1.5 text-red-400 text-xs font-bold">
@@ -111,9 +85,7 @@ export default function FeaturedMatchCard({ match, onClick }) {
                 </div>
               )}
               {isFinished && (
-                <div className="mt-2 text-[11px] text-gray-500 font-semibold uppercase tracking-widest">
-                  Full Time
-                </div>
+                <div className="mt-2 text-[11px] text-gray-500 font-semibold uppercase tracking-widest">Full Time</div>
               )}
             </>
           ) : (
@@ -130,12 +102,10 @@ export default function FeaturedMatchCard({ match, onClick }) {
           )}
         </div>
 
-        {/* Away team */}
+        {/* Away */}
         <div className="flex-1 flex flex-col items-center gap-3">
           {match.awayCrest ? (
-            <div className="w-20 h-20 flex items-center justify-center drop-shadow-2xl">
-              <img src={match.awayCrest} alt={match.awayTeam} className="w-full h-full object-contain" />
-            </div>
+            <img src={match.awayCrest} alt={match.awayTeam} className="w-20 h-20 object-contain drop-shadow-2xl" />
           ) : (
             <div className="w-20 h-20 rounded-full bg-white/10 flex items-center justify-center text-2xl font-black text-white/60">
               {match.awayTeam?.[0]}
@@ -144,13 +114,11 @@ export default function FeaturedMatchCard({ match, onClick }) {
           <span className="text-base font-bold text-white text-center leading-tight px-2">
             {match.awayTeam}
           </span>
-          {match.awayFlag && (
-            <span className="text-2xl">{match.awayFlag}</span>
-          )}
+          {match.awayFlag && <span className="text-2xl">{match.awayFlag}</span>}
         </div>
       </div>
 
-      {/* Footer */}
+      {/* Venue */}
       {match.venue && (
         <div className="relative flex items-center gap-2 px-6 py-3 border-t border-white/[0.06]">
           <MapPin size={11} className="text-gray-600 flex-shrink-0" />
@@ -158,7 +126,7 @@ export default function FeaturedMatchCard({ match, onClick }) {
         </div>
       )}
 
-      {/* Hover overlay */}
+      {/* Hover shimmer */}
       <div className="absolute inset-0 bg-white/[0.02] opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none rounded-2xl" />
     </motion.div>
   )

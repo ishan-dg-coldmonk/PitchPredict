@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { X, Lock, AlertCircle } from 'lucide-react'
+import { X } from 'lucide-react'
 import { formatDateTimeIST } from '../utils/helpers'
 import API from '../api/axios'
 import toast from 'react-hot-toast'
@@ -8,10 +8,10 @@ import toast from 'react-hot-toast'
 export default function PredictionModal({ match, roomId, eventId, existing, onClose, onSaved }) {
   const [homeScore, setHomeScore] = useState(existing?.predictedHomeScore ?? 0)
   const [awayScore, setAwayScore] = useState(existing?.predictedAwayScore ?? 0)
-  const [saving, setSaving] = useState(false)
+  const [saving, setSaving]       = useState(false)
 
   const isFinished = match.status === 'FINISHED'
-  const isLive = match.status === 'LIVE'
+  const isLive     = match.status === 'LIVE'       // includes half-time (PAUSED maps to LIVE)
   const canPredict = match.predictionOpen && match.status === 'SCHEDULED'
 
   useEffect(() => {
@@ -41,10 +41,11 @@ export default function PredictionModal({ match, roomId, eventId, existing, onCl
     }
   }
 
-  const getClosedMessage = () => {
-    if (isFinished) return { icon: '🏁', text: 'Match has ended', sub: 'Predictions are no longer accepted' }
-    if (isLive) return { icon: '🔴', text: 'Match is live!', sub: 'Prediction window has closed' }
-    return { icon: '🔒', text: 'Prediction window closed', sub: 'Closed 10 min before kick-off' }
+  // Message shown when prediction window is closed
+  const closedMsg = () => {
+    if (isFinished) return { icon: '🏁', title: 'Match has ended',   sub: 'Final result is in' }
+    if (isLive)     return { icon: '🔴', title: 'Match is underway', sub: 'Prediction window closed before kick-off' }
+    return              { icon: '🔒', title: 'Predictions closed',  sub: 'Window closes 10 min before kick-off' }
   }
 
   return (
@@ -77,7 +78,7 @@ export default function PredictionModal({ match, roomId, eventId, existing, onCl
             </button>
           </div>
 
-          {/* Teams + Score Inputs */}
+          {/* Teams + score inputs */}
           <div className="flex items-center justify-between mb-6">
             <div className="flex flex-col items-center gap-2 flex-1">
               {match.homeCrest && <img src={match.homeCrest} alt="" className="w-12 h-12 object-contain" />}
@@ -86,9 +87,7 @@ export default function PredictionModal({ match, roomId, eventId, existing, onCl
 
             <div className="flex items-center gap-3 px-4">
               <input
-                type="number"
-                min={0}
-                max={20}
+                type="number" min={0} max={20}
                 value={homeScore}
                 onChange={(e) => setHomeScore(Math.max(0, Math.min(20, parseInt(e.target.value) || 0)))}
                 disabled={!canPredict}
@@ -96,9 +95,7 @@ export default function PredictionModal({ match, roomId, eventId, existing, onCl
               />
               <span className="text-2xl font-bold text-gray-500">:</span>
               <input
-                type="number"
-                min={0}
-                max={20}
+                type="number" min={0} max={20}
                 value={awayScore}
                 onChange={(e) => setAwayScore(Math.max(0, Math.min(20, parseInt(e.target.value) || 0)))}
                 disabled={!canPredict}
@@ -112,57 +109,60 @@ export default function PredictionModal({ match, roomId, eventId, existing, onCl
             </div>
           </div>
 
-          {/* Actual score if finished */}
-          {isFinished && match.homeScore !== null && (
+          {/* Actual score if known */}
+          {(isFinished || isLive) && match.homeScore !== null && (
             <div className="bg-white/5 border border-white/10 rounded-xl p-3 mb-4 text-center">
-              <div className="text-xs text-gray-400 mb-1">Final Score</div>
+              <div className="text-xs text-gray-400 mb-1">
+                {isLive ? 'Current Score' : 'Final Score'}
+              </div>
               <div className="text-2xl font-black text-white">
                 {match.homeScore} – {match.awayScore}
               </div>
             </div>
           )}
 
-          {/* Existing prediction */}
+          {/* Existing prediction summary */}
           {existing && (
             <div className="bg-accent/10 border border-accent/20 rounded-xl p-3 mb-4">
               <div className="text-xs text-accent mb-1 font-semibold">Your Prediction</div>
               <div className="flex items-center justify-between text-sm">
-                <span className="text-white font-bold">{existing.predictedHomeScore} : {existing.predictedAwayScore}</span>
+                <span className="text-white font-bold">
+                  {existing.predictedHomeScore} : {existing.predictedAwayScore}
+                </span>
                 <div className="flex gap-2 text-xs text-gray-400">
-                  <span>Base: <span className="text-white">{existing.basePoints}</span></span>
-                  <span>Result: <span className="text-white">{existing.outcomeBonus}</span></span>
-                  <span>GD: <span className="text-white">{existing.gdBonus}</span></span>
-                  <span className="text-accent font-bold">= {existing.points} pts</span>
+                  <span>Base: <span className="text-white">{existing.basePoints ?? 0}</span></span>
+                  <span>Result: <span className="text-white">{existing.outcomeBonus ?? 0}</span></span>
+                  <span>GD: <span className="text-white">{existing.gdBonus ?? 0}</span></span>
+                  <span className="text-accent font-bold">= {existing.points ?? 0} pts</span>
                 </div>
               </div>
             </div>
           )}
 
-          {/* Action area */}
+          {/* CTA */}
           {canPredict ? (
             <button
               onClick={handleSubmit}
               disabled={saving}
               className="btn-primary w-full flex items-center justify-center gap-2"
             >
-              {saving ? (
-                <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-              ) : existing ? 'Update Prediction' : 'Submit Prediction'}
+              {saving
+                ? <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                : existing ? 'Update Prediction' : 'Submit Prediction'
+              }
             </button>
-          ) : (
-            (() => {
-              const msg = getClosedMessage()
-              return (
-                <div className="flex items-center gap-3 bg-white/5 border border-white/10 rounded-xl p-4">
-                  <span className="text-2xl">{msg.icon}</span>
-                  <div>
-                    <div className="text-sm font-semibold text-white">{msg.text}</div>
-                    <div className="text-xs text-gray-500 mt-0.5">{msg.sub}</div>
-                  </div>
+          ) : (() => {
+            const { icon, title, sub } = closedMsg()
+            return (
+              <div className="flex items-center gap-3 bg-white/5 border border-white/10 rounded-xl p-4">
+                <span className="text-2xl">{icon}</span>
+                <div>
+                  <div className="text-sm font-semibold text-white">{title}</div>
+                  <div className="text-xs text-gray-500 mt-0.5">{sub}</div>
                 </div>
-              )
-            })()
-          )}
+              </div>
+            )
+          })()}
         </motion.div>
       </motion.div>
     </AnimatePresence>
