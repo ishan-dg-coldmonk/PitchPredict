@@ -21,45 +21,28 @@ public class PredictionWindowManager {
     /**
      * Runs every minute.
      *
-     * Rules:
-     *  - Prediction window OPENS  24 hours before the match starts.
-     *  - Prediction window CLOSES 10 minutes before the match starts.
+     * Rules (updated):
+     *  - Prediction window is OPEN from match creation until 5 minutes before kick-off.
+     *  - There is NO earliest-open time — users can predict the moment a match is created.
+     *  - The window CLOSES permanently when (now >= matchDate - 5 minutes).
      *
-     * A match is created with predictionOpen = true by default (see Match entity).
-     * We flip it to false when (matchDate - now) <= 10 minutes.
-     * We also flip it back to true when (matchDate - now) is between 10 min and 24 h,
-     * so that matches synced far in advance get opened at the right time.
+     * This scheduler only needs to close windows; matches start open by default
+     * (predictionOpen = true on the Match entity).
      */
     @Scheduled(fixedRate = 60_000)
-    public void managePredictionWindows() {
-        LocalDateTime now = LocalDateTime.now();
+    public void closePredictionWindows() {
+        // All scheduled matches whose prediction window is still open
+        List<Match> openMatches = matchRepository.findByPredictionOpenTrueAndStatus(MatchStatus.SCHEDULED);
 
-        // Close predictions for matches within 10 minutes
-        LocalDateTime closeThreshold = now.plusMinutes(10);
-        // Open predictions for matches within 24 hours
-        LocalDateTime openThreshold = now.plusHours(24);
+        // Close threshold: 5 minutes before kick-off
+        LocalDateTime closeThreshold = LocalDateTime.now().plusMinutes(5);
 
-        List<Match> scheduledMatches = matchRepository.findByStatus(MatchStatus.SCHEDULED);
-
-        for (Match match : scheduledMatches) {
-            LocalDateTime matchDate = match.getMatchDate();
-
-            boolean shouldBeOpen = matchDate.isAfter(closeThreshold) && matchDate.isBefore(openThreshold);
-
-            if (shouldBeOpen && !match.getPredictionOpen()) {
-                match.setPredictionOpen(true);
+        for (Match match : openMatches) {
+            if (match.getMatchDate().isBefore(closeThreshold)) {
+                match.setPredictionOpen(false);
                 matchRepository.save(match);
-                log.info("Opened prediction window for match {}: {} vs {}",
-                        match.getId(), match.getHomeTeam(), match.getAwayTeam());
-            } else if (!shouldBeOpen && match.getPredictionOpen()) {
-                // matchDate <= closeThreshold → closes prediction 10 min before
-                if (matchDate.isBefore(closeThreshold)) {
-                    match.setPredictionOpen(false);
-                    matchRepository.save(match);
-                    log.info("Closed prediction window for match {}: {} vs {}",
-                            match.getId(), match.getHomeTeam(), match.getAwayTeam());
-                }
-                // If matchDate > openThreshold (>24h away), keep closed (not yet open)
+                log.info("Closed prediction window for match {} ({} vs {}) — kicks off at {}",
+                        match.getId(), match.getHomeTeam(), match.getAwayTeam(), match.getMatchDate());
             }
         }
     }

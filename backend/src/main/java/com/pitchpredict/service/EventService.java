@@ -41,14 +41,15 @@ public class EventService {
         Event event = eventRepository.findById(id)
                 .orElseThrow(() -> ApiException.notFound("Event not found"));
 
-        if (updated.getTitle() != null) event.setTitle(updated.getTitle());
-        if (updated.getDescription() != null) event.setDescription(updated.getDescription());
-        if (updated.getSport() != null) event.setSport(updated.getSport());
-        if (updated.getBannerUrl() != null) event.setBannerUrl(updated.getBannerUrl());
-        if (updated.getStartDate() != null) event.setStartDate(updated.getStartDate());
-        if (updated.getEndDate() != null) event.setEndDate(updated.getEndDate());
-        if (updated.getApiCompId() != null) event.setApiCompId(updated.getApiCompId());
-        if (updated.getPredictableStages() != null) event.setPredictableStages(updated.getPredictableStages());
+        if (updated.getTitle() != null)              event.setTitle(updated.getTitle());
+        if (updated.getDescription() != null)        event.setDescription(updated.getDescription());
+        if (updated.getSport() != null)              event.setSport(updated.getSport());
+        if (updated.getBannerUrl() != null)          event.setBannerUrl(updated.getBannerUrl());
+        if (updated.getPrize() != null)              event.setPrize(updated.getPrize());
+        if (updated.getStartDate() != null)          event.setStartDate(updated.getStartDate());
+        if (updated.getEndDate() != null)            event.setEndDate(updated.getEndDate());
+        if (updated.getApiCompId() != null)          event.setApiCompId(updated.getApiCompId());
+        if (updated.getPredictableStages() != null)  event.setPredictableStages(updated.getPredictableStages());
 
         event = eventRepository.save(event);
         return toDTO(event);
@@ -75,6 +76,7 @@ public class EventService {
                 .description(event.getDescription())
                 .sport(event.getSport())
                 .bannerUrl(event.getBannerUrl())
+                .prize(event.getPrize())
                 .status(event.getStatus().name())
                 .startDate(event.getStartDate())
                 .endDate(event.getEndDate())

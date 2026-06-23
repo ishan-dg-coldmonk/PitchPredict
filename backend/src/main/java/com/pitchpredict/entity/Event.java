@@ -30,6 +30,10 @@ public class Event {
     @Column(columnDefinition = "TEXT")
     private String bannerUrl;
 
+    /** Prize string shown on event card, e.g. "₹10,000 Cash Prize" */
+    @Column(length = 300)
+    private String prize;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     @Builder.Default

@@ -47,9 +47,11 @@ public class AdminController {
     private final ObjectMapper objectMapper;
     private final LeaderboardService leaderboardService;
 
+    // ── Events ────────────────────────────────────────────────────────────────
+
     @PostMapping("/events")
     public ResponseEntity<EventDTO> createEvent(@RequestBody Map<String, Object> body,
-                                                Authentication authentication) {
+                                                 Authentication authentication) {
         Long userId = getUserId(authentication);
 
         Event event = Event.builder()
@@ -57,6 +59,7 @@ public class AdminController {
                 .description((String) body.get("description"))
                 .sport((String) body.getOrDefault("sport", "Football"))
                 .bannerUrl((String) body.get("bannerUrl"))
+                .prize((String) body.get("prize"))
                 .startDate(LocalDate.parse((String) body.get("startDate")))
                 .endDate(LocalDate.parse((String) body.get("endDate")))
                 .apiCompId((String) body.get("apiCompId"))
@@ -69,12 +72,13 @@ public class AdminController {
 
     @PutMapping("/events/{id}")
     public ResponseEntity<EventDTO> updateEvent(@PathVariable Long id,
-                                                @RequestBody Map<String, Object> body) {
+                                                 @RequestBody Map<String, Object> body) {
         Event updated = Event.builder()
                 .title((String) body.get("title"))
                 .description((String) body.get("description"))
                 .sport((String) body.get("sport"))
                 .bannerUrl((String) body.get("bannerUrl"))
+                .prize((String) body.get("prize"))
                 .startDate(body.get("startDate") != null ? LocalDate.parse((String) body.get("startDate")) : null)
                 .endDate(body.get("endDate") != null ? LocalDate.parse((String) body.get("endDate")) : null)
                 .apiCompId((String) body.get("apiCompId"))
@@ -106,23 +110,24 @@ public class AdminController {
         return ResponseEntity.ok(eventService.finishEvent(id));
     }
 
-    // ── NEW: list rooms for an event (admin view) ──────────────────────────────
+    // ── Admin: rooms under an event ───────────────────────────────────────────
+
     @GetMapping("/events/{eventId}/rooms")
     public ResponseEntity<List<RoomDTO>> getRoomsForEvent(@PathVariable Long eventId) {
         return ResponseEntity.ok(roomService.getRoomsForAdmin(eventId));
     }
 
-    // ── NEW: leaderboard for a specific room (admin view) ─────────────────────
     @GetMapping("/rooms/{roomId}/leaderboard")
     public ResponseEntity<List<LeaderboardEntry>> getRoomLeaderboard(@PathVariable Long roomId) {
         return ResponseEntity.ok(leaderboardService.getLeaderboard(roomId));
     }
 
-    // ── NEW: list members of a room (admin view) ───────────────────────────────
     @GetMapping("/rooms/{roomId}/members")
     public ResponseEntity<List<RoomMemberDTO>> getRoomMembers(@PathVariable Long roomId) {
         return ResponseEntity.ok(roomService.getRoomMembers(roomId));
     }
+
+    // ── Matches ───────────────────────────────────────────────────────────────
 
     @PostMapping("/matches")
     public ResponseEntity<MatchDTO> createMatch(@RequestBody Map<String, Object> body) {
@@ -142,7 +147,7 @@ public class AdminController {
 
     @PostMapping("/matches/{id}/set-score")
     public ResponseEntity<MatchDTO> setMatchScore(@PathVariable Long id,
-                                                  @RequestBody Map<String, Object> body) {
+                                                   @RequestBody Map<String, Object> body) {
         Match match = matchRepository.findById(id)
                 .orElseThrow(() -> ApiException.notFound("Match not found"));
         match.setHomeScore(Integer.parseInt(body.get("homeScore").toString()));
@@ -156,7 +161,7 @@ public class AdminController {
 
     @PostMapping("/matches/{id}/goals")
     public ResponseEntity<MatchDTO> setMatchGoals(@PathVariable Long id,
-                                                  @RequestBody List<MatchGoalDTO> goals) {
+                                                   @RequestBody List<MatchGoalDTO> goals) {
         Match match = matchRepository.findById(id)
                 .orElseThrow(() -> ApiException.notFound("Match not found"));
         try {
@@ -168,9 +173,11 @@ public class AdminController {
         return ResponseEntity.ok(matchService.toDTO(match));
     }
 
+    // ── Rooms ─────────────────────────────────────────────────────────────────
+
     @PostMapping("/rooms")
     public ResponseEntity<RoomDTO> createRoom(@RequestBody Map<String, Object> body,
-                                              Authentication authentication) {
+                                               Authentication authentication) {
         Long userId = getUserId(authentication);
 
         Room room = Room.builder()
@@ -185,6 +192,8 @@ public class AdminController {
 
         return ResponseEntity.ok(roomService.createRoom(room));
     }
+
+    // ── Helpers ───────────────────────────────────────────────────────────────
 
     private Long getUserId(Authentication authentication) {
         User user = userRepository.findByUsername(authentication.getName())

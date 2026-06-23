@@ -2,6 +2,7 @@ package com.pitchpredict.controller;
 
 import com.pitchpredict.dto.LeaderboardEntry;
 import com.pitchpredict.dto.RoomDTO;
+import com.pitchpredict.dto.RoomMemberDTO;
 import com.pitchpredict.entity.User;
 import com.pitchpredict.exception.ApiException;
 import com.pitchpredict.repository.UserRepository;
@@ -32,7 +33,8 @@ public class RoomController {
     }
 
     @GetMapping("/{roomId}")
-    public ResponseEntity<RoomDTO> getRoom(@PathVariable Long roomId, Authentication authentication) {
+    public ResponseEntity<RoomDTO> getRoom(@PathVariable Long roomId,
+                                            Authentication authentication) {
         Long userId = getUserId(authentication);
         return ResponseEntity.ok(roomService.getRoom(roomId, userId));
     }
@@ -41,8 +43,8 @@ public class RoomController {
     public ResponseEntity<RoomDTO> joinRoom(@RequestBody Map<String, Object> body,
                                              Authentication authentication) {
         Long eventId = Long.valueOf(body.get("eventId").toString());
-        String code = body.get("registrationCode").toString();
-        Long userId = getUserId(authentication);
+        String code  = body.get("registrationCode").toString();
+        Long userId  = getUserId(authentication);
         return ResponseEntity.ok(roomService.joinRoom(eventId, code, userId));
     }
 
@@ -55,6 +57,12 @@ public class RoomController {
     @GetMapping("/{roomId}/leaderboard")
     public ResponseEntity<List<LeaderboardEntry>> getLeaderboard(@PathVariable Long roomId) {
         return ResponseEntity.ok(leaderboardService.getLeaderboard(roomId));
+    }
+
+    /** Returns the member list for a room — accessible to any authenticated member */
+    @GetMapping("/{roomId}/members")
+    public ResponseEntity<List<RoomMemberDTO>> getMembers(@PathVariable Long roomId) {
+        return ResponseEntity.ok(roomService.getRoomMembers(roomId));
     }
 
     private Long getUserId(Authentication authentication) {

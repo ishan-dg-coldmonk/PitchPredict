@@ -15,6 +15,7 @@ public class EventDTO {
     private String description;
     private String sport;
     private String bannerUrl;
+    private String prize;
     private String status;
     private LocalDate startDate;
     private LocalDate endDate;
