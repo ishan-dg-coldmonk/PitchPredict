@@ -81,6 +81,13 @@ body { margin: 0; }
   box-shadow: 0 8px 32px rgba(239,68,68,0.1);
 }
 
+/* Hide scrollbar but keep functionality */
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.scrollbar-hide::-webkit-scrollbar { display: none; }
+
 /* Snap expo-out transition */
 .snap-ease {
   transition-timing-function: cubic-bezier(0.16, 1, 0.3, 1);

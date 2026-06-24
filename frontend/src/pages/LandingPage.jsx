@@ -23,27 +23,27 @@ export default function LandingPage() {
         <div className="absolute bottom-1/4 -right-32 w-96 h-96 bg-secondary/10 rounded-full blur-3xl" />
       </div>
 
-      <nav className="relative z-10 max-w-7xl mx-auto px-6 py-5 flex items-center justify-between">
+      <nav className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 py-4 sm:py-5 flex items-center justify-between">
         <div className="flex items-center gap-2">
           <div className="w-9 h-9 bg-gradient-to-br from-primary to-secondary rounded-lg flex items-center justify-center">
             <Zap size={20} className="text-white" />
           </div>
           <span className="text-xl font-bold gradient-text">PitchPredict</span>
         </div>
-        <div className="flex items-center gap-3">
-          <Link to="/login" className="btn-outline text-sm px-5 py-2">Log In</Link>
-          <Link to="/signup" className="btn-primary text-sm px-5 py-2">Sign Up</Link>
+        <div className="flex items-center gap-2 sm:gap-3">
+          <Link to="/login" className="btn-outline text-xs sm:text-sm px-3 sm:px-5 py-1.5 sm:py-2">Log In</Link>
+          <Link to="/signup" className="btn-primary text-xs sm:text-sm px-3 sm:px-5 py-1.5 sm:py-2">Sign Up</Link>
         </div>
       </nav>
 
-      <section className="relative z-10 max-w-4xl mx-auto px-6 pt-20 pb-32 text-center">
+      <section className="relative z-10 max-w-4xl mx-auto px-5 sm:px-6 pt-16 sm:pt-20 lg:pt-2.5 pb-24 sm:pb-32 text-center">
         <motion.div initial={{ opacity: 0, y: 30 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6 }}>
-          <div className="inline-flex items-center gap-2 bg-primary/10 border border-primary/20 rounded-full px-4 py-1.5 text-sm text-primary-light mb-8">
-            <Star size={14} />
+          <div className="inline-flex items-center gap-2 bg-primary/10 border border-primary/20 rounded-full px-5 py-1.5 text-xs sm:text-sm text-primary-light mb-8">
+            <Star size={14} className="hidden sm:block" />
             FIFA World Cup 2026 predictions now open!
           </div>
 
-          <h1 className="text-5xl md:text-7xl lg:text-8xl font-black text-white leading-tight mb-6">
+          <h1 className="text-4xl sm:text-5xl md:text-7xl lg:text-8xl font-black text-white leading-tight mb-6">
             Predict. <span className="gradient-text">Compete.</span>{' '}
             <span className="text-glow">Conquer.</span>
           </h1>
@@ -53,11 +53,11 @@ export default function LandingPage() {
             compete with friends in private rooms, and climb the leaderboard.
           </p>
 
-          <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-            <Link to="/signup" className="btn-primary text-lg px-8 py-4 flex items-center gap-2">
-              Get Started <ArrowRight size={20} />
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-8 sm:gap-4">
+            <Link to="/signup" className="btn-primary text-base sm:text-lg px-6 sm:px-8 py-3 sm:py-4 flex items-center gap-2">
+              Get Started <ArrowRight size={18} className="sm:size-5" />
             </Link>
-            <Link to="/login" className="btn-outline text-lg px-8 py-4">
+            <Link to="/login" className="btn-outline text-base sm:text-lg px-6 sm:px-8 py-3 sm:py-4">
               I have an account
             </Link>
           </div>

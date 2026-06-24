@@ -204,10 +204,10 @@ function EventRow({ event, onReload }) {
     <>
       <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="glass-card p-5">
         {/* Event header */}
-        <div className="flex flex-wrap items-center justify-between gap-4">
-          <div className="flex-1 min-w-0">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+          <div className="flex-1 min-w-0 w-full sm:w-auto">
             <div className="flex items-center gap-2 mb-1">
-              <h3 className="text-lg font-bold text-white truncate">{event.title}</h3>
+              <h3 className="text-base sm:text-lg font-bold text-white truncate">{event.title}</h3>
               <span className={`flex-shrink-0 px-2 py-0.5 rounded-full text-xs font-semibold border ${colors.bg} ${colors.text} ${colors.border}`}>
                 {event.status}
               </span>
@@ -225,31 +225,31 @@ function EventRow({ event, onReload }) {
             </div>
           </div>
 
-          <div className="flex items-center gap-2 flex-wrap">
+          <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
             <button onClick={handleSync} disabled={syncing}
-              className="flex items-center gap-1.5 text-xs bg-white/10 hover:bg-white/20 text-white px-3 py-2 rounded-lg transition-colors">
-              <RefreshCw size={14} className={syncing ? 'animate-spin' : ''} /> Sync
+              className="flex items-center gap-1 text-xs bg-white/10 hover:bg-white/20 text-white px-2.5 sm:px-3 py-1.5 sm:py-2 rounded-lg transition-colors">
+              <RefreshCw size={12} className={syncing ? 'animate-spin' : ''} /> Sync
             </button>
             <button
               onClick={() => setRoomForm(roomForm ? null : { name: '', description: '', registrationCode: '', maxMembers: '' })}
-              className="flex items-center gap-1.5 text-xs bg-white/10 hover:bg-white/20 text-white px-3 py-2 rounded-lg transition-colors">
-              <Users size={14} /> + Room
+              className="flex items-center gap-1 text-xs bg-white/10 hover:bg-white/20 text-white px-2.5 sm:px-3 py-1.5 sm:py-2 rounded-lg transition-colors">
+              <Users size={12} /> +Room
             </button>
             {event.status === 'UPCOMING' && (
               <button onClick={handleActivate}
-                className="flex items-center gap-1.5 text-xs bg-accent/20 hover:bg-accent/30 text-accent px-3 py-2 rounded-lg transition-colors">
-                <Play size={14} /> Activate
+                className="flex items-center gap-1 text-xs bg-accent/20 hover:bg-accent/30 text-accent px-2.5 sm:px-3 py-1.5 sm:py-2 rounded-lg transition-colors">
+                <Play size={12} /> Start
               </button>
             )}
             {event.status === 'ACTIVE' && (
               <button onClick={handleFinish}
-                className="flex items-center gap-1.5 text-xs bg-red-500/20 hover:bg-red-500/30 text-red-400 px-3 py-2 rounded-lg transition-colors">
-                <Square size={14} /> Finish
+                className="flex items-center gap-1 text-xs bg-red-500/20 hover:bg-red-500/30 text-red-400 px-2.5 sm:px-3 py-1.5 sm:py-2 rounded-lg transition-colors">
+                <Square size={12} /> End
               </button>
             )}
             <button onClick={toggleExpand}
-              className="flex items-center gap-1.5 text-xs bg-primary/15 hover:bg-primary/25 text-primary px-3 py-2 rounded-lg transition-colors">
-              {expanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />} Rooms
+              className="flex items-center gap-1 text-xs bg-primary/15 hover:bg-primary/25 text-primary px-2.5 sm:px-3 py-1.5 sm:py-2 rounded-lg transition-colors">
+              {expanded ? <ChevronUp size={12} /> : <ChevronDown size={12} />} Rooms
             </button>
           </div>
         </div>
@@ -384,12 +384,12 @@ export default function AdminPage() {
       <Navbar />
       <div className="pt-20 pb-12 max-w-5xl mx-auto px-4">
 
-        <div className="flex items-center justify-between mb-8">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-8">
           <div className="flex items-center gap-3">
             <Settings className="text-primary" size={28} />
-            <h1 className="text-3xl font-bold text-white">Admin Panel</h1>
+            <h1 className="text-2xl sm:text-3xl font-bold text-white">Admin Panel</h1>
           </div>
-          <button onClick={() => setShowCreate(!showCreate)} className="btn-primary flex items-center gap-2">
+          <button onClick={() => setShowCreate(!showCreate)} className="btn-primary flex items-center gap-2 text-sm sm:text-base">
             <Plus size={18} /> New Event
           </button>
         </div>

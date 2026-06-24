@@ -116,10 +116,10 @@ function AllPredictionsModal({ match, roomId, onClose }) {
                 <div className="text-xl font-black text-white tabular-nums">
                   {p.predictedHomeScore} : {p.predictedAwayScore}
                 </div>
-                <div className="text-right min-w-[60px]">
-                  <div className="text-accent font-bold text-sm">{p.points ?? 0} pts</div>
-                  <div className="text-[10px] text-gray-500">
-                    b:{p.basePoints ?? 0} r:{p.outcomeBonus ?? 0} g:{p.gdBonus ?? 0}
+                <div className="text-right min-w-[50px] sm:min-w-[60px]">
+                  <div className="text-accent font-bold text-xs sm:text-sm">{p.points ?? 0} pts</div>
+                  <div className="text-[9px] sm:text-[10px] text-gray-500 whitespace-nowrap">
+                    B:{p.basePoints ?? 0} R:{p.outcomeBonus ?? 0} G:{p.gdBonus ?? 0}
                   </div>
                 </div>
               </div>
@@ -355,7 +355,7 @@ export default function RoomDetailPage() {
         </motion.div>
 
         {/* ── Main tabs ───────────────────────────────────────────────── */}
-        <div className="flex gap-1 mb-8 bg-white/[0.03] p-1 rounded-xl w-fit">
+        <div className="flex flex-wrap gap-1 mb-8 bg-white/[0.03] p-1 rounded-xl w-fit">
           {['matches', 'leaderboard'].map((t) => (
             <button
               key={t}
@@ -473,7 +473,7 @@ export default function RoomDetailPage() {
                   )}
 
                   {/* Sub-tabs */}
-                  <div className="flex items-center gap-1 mb-6 bg-white/[0.025] p-1 rounded-xl w-fit">
+                  <div className="flex items-center flex-wrap gap-1 mb-6 bg-white/[0.025] p-1 rounded-xl w-fit">
                     <button
                       onClick={() => setMatchTab('upcoming')}
                       className={`flex items-center gap-1.5 text-xs font-semibold px-4 py-2 rounded-lg transition-all ${

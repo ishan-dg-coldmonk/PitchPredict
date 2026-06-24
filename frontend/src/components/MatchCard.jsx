@@ -16,7 +16,7 @@ export default function MatchCard({ match, onClick, children }) {
       className={`match-card cursor-pointer group ${isLive ? 'is-live' : ''}`}
     >
       {/* ── Header row ────────────────────────────────────────────────── */}
-      <div className="flex items-center justify-between px-5 py-2.5">
+      <div className="flex items-center justify-between px-4 sm:px-5 py-2.5">
         <div className="flex items-center gap-2">
           {match.groupName && (
             <span className="text-[10px] font-semibold uppercase tracking-widest text-primary/80 bg-primary/8 px-2 py-0.5 rounded">
@@ -58,53 +58,53 @@ export default function MatchCard({ match, onClick, children }) {
       </div>
 
       {/* ── Teams + score ─────────────────────────────────────────────── */}
-      <div className="flex items-center px-5 py-4 gap-3">
+      <div className="flex items-center px-4 sm:px-5 py-4 gap-2 sm:gap-3">
         {/* Home */}
-        <div className="flex-1 flex items-center gap-3 min-w-0">
+        <div className="flex-1 flex items-center gap-2 sm:gap-3 min-w-0">
           {match.homeCrest && (
-            <img src={match.homeCrest} alt="" className="w-8 h-8 object-contain flex-shrink-0 drop-shadow-sm" />
+            <img src={match.homeCrest} alt="" className="w-7 sm:w-8 h-7 sm:h-8 object-contain flex-shrink-0 drop-shadow-sm" />
           )}
-          <span className="font-semibold text-[15px] text-white leading-tight truncate">
+          <span className="font-semibold text-[13px] sm:text-[15px] text-white leading-tight truncate">
             {match.homeTeam}
           </span>
         </div>
 
         {/* Score / time */}
-        <div className="flex flex-col items-center justify-center min-w-[110px] px-2">
+        <div className="flex flex-col items-center justify-center min-w-[75px] sm:min-w-[110px] px-1 sm:px-2">
           {hasScore ? (
-            <div className="flex items-center gap-2">
-              <span className={`text-3xl font-black tabular-nums leading-none ${isLive ? 'text-white' : 'text-white/90'}`}>
+            <div className="flex items-center gap-1.5 sm:gap-2">
+              <span className={`text-2xl sm:text-3xl font-black tabular-nums leading-none ${isLive ? 'text-white' : 'text-white/90'}`}>
                 {match.homeScore}
               </span>
-              <span className="text-lg font-bold text-white/20 leading-none">:</span>
-              <span className={`text-3xl font-black tabular-nums leading-none ${isLive ? 'text-white' : 'text-white/90'}`}>
+              <span className="text-base sm:text-lg font-bold text-white/20 leading-none">:</span>
+              <span className={`text-2xl sm:text-3xl font-black tabular-nums leading-none ${isLive ? 'text-white' : 'text-white/90'}`}>
                 {match.awayScore}
               </span>
             </div>
           ) : (
             <div className="flex flex-col items-center">
-              <span className="text-[11px] font-medium text-gray-400 tabular-nums tracking-wide">
+              <span className="text-[10px] sm:text-[11px] font-medium text-gray-400 tabular-nums tracking-wide">
                 {formatTimeIST(match.matchDate)} IST
               </span>
-              <span className="text-sm font-bold text-white/15 mt-0.5">VS</span>
+              <span className="text-xs sm:text-sm font-bold text-white/15 mt-0.5">VS</span>
             </div>
           )}
         </div>
 
         {/* Away */}
-        <div className="flex-1 flex items-center gap-3 justify-end min-w-0">
-          <span className="font-semibold text-[15px] text-white leading-tight truncate text-right">
+        <div className="flex-1 flex items-center gap-2 sm:gap-3 justify-end min-w-0">
+          <span className="font-semibold text-[13px] sm:text-[15px] text-white leading-tight truncate text-right">
             {match.awayTeam}
           </span>
           {match.awayCrest && (
-            <img src={match.awayCrest} alt="" className="w-8 h-8 object-contain flex-shrink-0 drop-shadow-sm" />
+            <img src={match.awayCrest} alt="" className="w-7 sm:w-8 h-7 sm:h-8 object-contain flex-shrink-0 drop-shadow-sm" />
           )}
         </div>
       </div>
 
       {/* ── Venue ─────────────────────────────────────────────────────── */}
       {match.venue && (
-        <div className="flex items-center gap-1.5 px-5 py-2 border-t border-white/[0.04]">
+        <div className="flex items-center gap-1.5 px-4 sm:px-5 py-2 border-t border-white/[0.04]">
           <MapPin size={10} className="text-gray-600 flex-shrink-0" />
           <span className="text-[10px] text-gray-500 truncate">{match.venue}</span>
         </div>

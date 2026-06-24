@@ -57,26 +57,26 @@ export default function FeaturedMatchCard({ match, onClick }) {
         {/* Home */}
         <div className="flex-1 flex flex-col items-center gap-3">
           {match.homeCrest ? (
-            <img src={match.homeCrest} alt={match.homeTeam} className="w-20 h-20 object-contain drop-shadow-2xl" />
+            <img src={match.homeCrest} alt={match.homeTeam} className="w-14 sm:w-20 h-14 sm:h-20 object-contain drop-shadow-2xl" />
           ) : (
-            <div className="w-20 h-20 rounded-full bg-white/10 flex items-center justify-center text-2xl font-black text-white/60">
+            <div className="w-14 sm:w-20 h-14 sm:h-20 rounded-full bg-white/10 flex items-center justify-center text-lg sm:text-2xl font-black text-white/60">
               {match.homeTeam?.[0]}
             </div>
           )}
-          <span className="text-base font-bold text-white text-center leading-tight px-2">
+          <span className="text-sm sm:text-base font-bold text-white text-center leading-tight px-2">
             {match.homeTeam}
           </span>
-          {match.homeFlag && <span className="text-2xl">{match.homeFlag}</span>}
+          {match.homeFlag && <span className="text-xl sm:text-2xl">{match.homeFlag}</span>}
         </div>
 
         {/* Centre */}
-        <div className="flex flex-col items-center justify-center min-w-[130px]">
+        <div className="flex flex-col items-center justify-center min-w-[100px] sm:min-w-[130px]">
           {hasScore ? (
             <>
-              <div className="flex items-center gap-3">
-                <span className="text-5xl font-black tabular-nums leading-none text-white">{match.homeScore}</span>
-                <span className="text-2xl font-bold text-white/20">:</span>
-                <span className="text-5xl font-black tabular-nums leading-none text-white">{match.awayScore}</span>
+              <div className="flex items-center gap-2 sm:gap-3">
+                <span className="text-3xl sm:text-5xl font-black tabular-nums leading-none text-white">{match.homeScore}</span>
+                <span className="text-lg sm:text-2xl font-bold text-white/20">:</span>
+                <span className="text-3xl sm:text-5xl font-black tabular-nums leading-none text-white">{match.awayScore}</span>
               </div>
               {isLive && (
                 <div className="mt-2 flex items-center gap-1.5 text-red-400 text-xs font-bold">
@@ -105,16 +105,16 @@ export default function FeaturedMatchCard({ match, onClick }) {
         {/* Away */}
         <div className="flex-1 flex flex-col items-center gap-3">
           {match.awayCrest ? (
-            <img src={match.awayCrest} alt={match.awayTeam} className="w-20 h-20 object-contain drop-shadow-2xl" />
+            <img src={match.awayCrest} alt={match.awayTeam} className="w-14 sm:w-20 h-14 sm:h-20 object-contain drop-shadow-2xl" />
           ) : (
-            <div className="w-20 h-20 rounded-full bg-white/10 flex items-center justify-center text-2xl font-black text-white/60">
+            <div className="w-14 sm:w-20 h-14 sm:h-20 rounded-full bg-white/10 flex items-center justify-center text-lg sm:text-2xl font-black text-white/60">
               {match.awayTeam?.[0]}
             </div>
           )}
-          <span className="text-base font-bold text-white text-center leading-tight px-2">
+          <span className="text-sm sm:text-base font-bold text-white text-center leading-tight px-2">
             {match.awayTeam}
           </span>
-          {match.awayFlag && <span className="text-2xl">{match.awayFlag}</span>}
+          {match.awayFlag && <span className="text-xl sm:text-2xl">{match.awayFlag}</span>}
         </div>
       </div>
 

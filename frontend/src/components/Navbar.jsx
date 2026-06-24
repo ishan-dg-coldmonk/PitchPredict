@@ -79,21 +79,36 @@ export default function Navbar() {
             className="md:hidden border-t border-white/5 overflow-hidden"
           >
             <div className="p-4 space-y-2">
+              {/* User info */}
+              <div className="flex items-center gap-3 px-4 py-3 border-b border-white/5 mb-2">
+                <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-primary/30 to-secondary/30 flex items-center justify-center overflow-hidden">
+                  {user?.profilePic ? (
+                    <img src={user.profilePic} alt="" className="w-full h-full object-cover" />
+                  ) : (
+                    <User size={16} className="text-gray-300" />
+                  )}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm font-semibold text-white truncate">{user?.username}</div>
+                  <div className="text-xs text-gray-500 truncate">{user?.email}</div>
+                </div>
+              </div>
               {links.map((link) => (
                 <Link
                   key={link.to}
                   to={link.to}
                   onClick={() => setMenuOpen(false)}
-                  className="block px-4 py-2.5 text-gray-300 hover:bg-white/10 rounded-xl transition-colors"
+                  className="flex items-center gap-2 px-4 py-2.5 text-gray-300 hover:bg-white/10 rounded-xl transition-colors"
                 >
+                  {link.icon && <link.icon size={16} />}
                   {link.label}
                 </Link>
               ))}
               <button
                 onClick={() => { setMenuOpen(false); handleLogout() }}
-                className="w-full text-left px-4 py-2.5 text-red-400 hover:bg-red-500/10 rounded-xl transition-colors"
+                className="w-full flex items-center gap-2 px-4 py-2.5 text-red-400 hover:bg-red-500/10 rounded-xl transition-colors"
               >
-                Logout
+                <LogOut size={16} /> Logout
               </button>
             </div>
           </motion.div>

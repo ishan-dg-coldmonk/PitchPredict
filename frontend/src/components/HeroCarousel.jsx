@@ -20,7 +20,7 @@ export default function HeroCarousel({ events }) {
       effect="fade"
       autoplay={{ delay: 6000, disableOnInteraction: false }}
       loop={heroEvents.length > 1}
-      className="w-full h-[500px] md:h-[550px] rounded-2xl overflow-hidden"
+      className="w-full h-[300px] sm:h-[400px] md:h-[550px] rounded-2xl overflow-hidden"
     >
       {heroEvents.map((event) => {
         const colors = STATUS_COLORS[event.status]
@@ -35,7 +35,7 @@ export default function HeroCarousel({ events }) {
               <div className="absolute inset-0 bg-gradient-to-r from-navy via-navy/80 to-transparent" />
               <div className="absolute inset-0 bg-gradient-to-t from-navy via-transparent to-navy/30" />
 
-              <div className="relative h-full flex flex-col justify-center px-8 md:px-16 max-w-2xl">
+              <div className="relative h-full flex flex-col justify-center px-6 sm:px-8 md:px-16 max-w-2xl">
                 <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
                   <span className={`inline-flex px-3 py-1 rounded-full text-xs font-semibold border mb-4 ${colors.bg} ${colors.text} ${colors.border}`}>
                     {event.status}

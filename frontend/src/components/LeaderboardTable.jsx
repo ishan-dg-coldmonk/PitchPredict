@@ -54,8 +54,8 @@ export default function LeaderboardTable({ entries }) {
               <div className="font-semibold text-white text-sm truncate">
                 {entry.username} {isMe && <span className="text-primary text-xs">(You)</span>}
               </div>
-              <div className="text-xs text-gray-500">
-                {entry.matchesPredicted} predicted &middot; {entry.exactScores} exact &middot; {entry.correctOutcomes} correct
+              <div className="text-[10px] sm:text-xs text-gray-500">
+                {entry.matchesPredicted} pred &middot; {entry.exactScores} exact &middot; {entry.correctOutcomes} corr
               </div>
             </div>
 

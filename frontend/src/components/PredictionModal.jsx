@@ -169,19 +169,19 @@ export default function PredictionModal({ match, roomId, eventId, existing, onCl
           {existing && !canPredict && (
             <div className="bg-accent/10 border border-accent/20 rounded-xl p-3.5 mb-4">
               <div className="text-xs text-accent font-semibold mb-2">Your Prediction</div>
-              <div className="flex items-center justify-between">
-                <span className="text-xl font-black text-white tabular-nums">
-                  {existing.predictedHomeScore} : {existing.predictedAwayScore}
-                </span>
-                <div className="flex items-center gap-3 text-xs text-gray-400">
-                  <span>Base <span className="text-white font-bold">{existing.basePoints ?? '—'}</span></span>
-                  <span>Result <span className="text-white font-bold">{existing.outcomeBonus ?? '—'}</span></span>
-                  <span>GD <span className="text-white font-bold">{existing.gdBonus ?? '—'}</span></span>
-                  <span className="text-accent font-black text-sm">
-                    {existing.points != null ? `${existing.points} pts` : 'Pending'}
+                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
+                  <span className="text-xl font-black text-white tabular-nums">
+                    {existing.predictedHomeScore} : {existing.predictedAwayScore}
                   </span>
+                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] sm:text-xs text-gray-400">
+                    <span>B <span className="text-white font-bold">{existing.basePoints ?? '—'}</span></span>
+                    <span>R <span className="text-white font-bold">{existing.outcomeBonus ?? '—'}</span></span>
+                    <span>GD <span className="text-white font-bold">{existing.gdBonus ?? '—'}</span></span>
+                    <span className="text-accent font-black text-xs sm:text-sm">
+                      {existing.points != null ? `${existing.points} pts` : 'Pending'}
+                    </span>
+                  </div>
                 </div>
-              </div>
             </div>
           )}
 

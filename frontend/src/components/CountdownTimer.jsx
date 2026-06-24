@@ -21,8 +21,8 @@ export default function CountdownTimer({ targetDate }) {
     <div className="flex items-center gap-2">
       {blocks.map((b, i) => (
         <div key={b.label} className="flex items-center">
-          <div className="glass-card px-3 py-2 text-center min-w-[52px]">
-            <div className="text-lg font-bold text-white tabular-nums">{String(b.value).padStart(2, '0')}</div>
+          <div className="glass-card px-2 sm:px-3 py-2 text-center min-w-[42px] sm:min-w-[52px]">
+            <div className="text-base sm:text-lg font-bold text-white tabular-nums">{String(b.value).padStart(2, '0')}</div>
             <div className="text-[10px] text-gray-500 uppercase tracking-wider">{b.label}</div>
           </div>
           {i < blocks.length - 1 && <span className="text-primary font-bold mx-1">:</span>}

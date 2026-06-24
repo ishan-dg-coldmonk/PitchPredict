@@ -33,7 +33,7 @@ export default function HomePage() {
             Events
           </motion.h2>
 
-          <div className="glass-card inline-flex p-1 mb-8 gap-1">
+          <div className="glass-card inline-flex flex-wrap p-1 mb-8 gap-1">
             {FILTERS.map((f) => (
               <button
                 key={f}

@@ -140,7 +140,7 @@ export default function EventDetailPage() {
       <div className="pb-12 max-w-5xl mx-auto px-4">
 
         {/* Tabs */}
-        <div className="glass-card inline-flex p-1 mb-8 gap-1">
+        <div className="glass-card inline-flex flex-wrap p-1 mb-8 gap-1">
           {['rooms', 'matches'].map((t) => (
             <button
               key={t}
@@ -195,8 +195,8 @@ export default function EventDetailPage() {
                     transition={{ delay: i * 0.05 }}
                     className="glass-card p-5 flex flex-col gap-3 hover:border-primary/30 hover:-translate-y-1 transition-all duration-300 border border-white/10"
                   >
-                    <div className="flex items-center justify-between">
-                      <h3 className="font-bold text-white">{room.name}</h3>
+                    <div className="flex items-center justify-between gap-2">
+                      <h3 className="font-bold text-white truncate min-w-0">{room.name}</h3>
                       {room.userJoined && (
                         <span className="flex items-center gap-1 text-xs text-accent bg-accent/10 border border-accent/20 px-2 py-0.5 rounded-full flex-shrink-0">
                           <Check size={12} /> Joined

@@ -291,24 +291,27 @@ export default function ProfilePage() {
                   </div>
 
                   {/* Action buttons */}
-                  <div className="flex items-center gap-2 flex-shrink-0 flex-wrap">
+                  <div className="flex items-center gap-1.5 flex-shrink-0 flex-wrap">
                     <button
                       onClick={() => setShowingLeaderboard({ id: room.id, name: room.name })}
-                      className="flex items-center gap-1.5 text-xs bg-yellow-500/10 hover:bg-yellow-500/20 text-yellow-400 px-3 py-1.5 rounded-lg transition-colors border border-yellow-500/20"
+                      className="flex items-center gap-1 text-[11px] sm:text-xs bg-yellow-500/10 hover:bg-yellow-500/20 text-yellow-400 px-2 sm:px-3 py-1.5 rounded-lg transition-colors border border-yellow-500/20"
                     >
-                      <Trophy size={12} /> Leaderboard
+                      <Trophy size={10} />
+                      <span>LB</span>
                     </button>
                     <button
                       onClick={() => setShowingMembers({ id: room.id, name: room.name })}
-                      className="flex items-center gap-1.5 text-xs bg-primary/10 hover:bg-primary/20 text-primary px-3 py-1.5 rounded-lg transition-colors border border-primary/20"
+                      className="flex items-center gap-1 text-[11px] sm:text-xs bg-primary/10 hover:bg-primary/20 text-primary px-2 sm:px-3 py-1.5 rounded-lg transition-colors border border-primary/20"
                     >
-                      <UserCheck size={12} /> Members
+                      <UserCheck size={10} />
+                      <span>Members</span>
                     </button>
                     <button
                       onClick={() => navigate(`/rooms/${room.id}`)}
-                      className="flex items-center gap-1.5 text-xs bg-white/8 hover:bg-white/15 text-gray-300 hover:text-white px-3 py-1.5 rounded-lg transition-colors border border-white/10"
+                      className="flex items-center gap-1 text-[11px] sm:text-xs bg-white/8 hover:bg-white/15 text-gray-300 hover:text-white px-2 sm:px-3 py-1.5 rounded-lg transition-colors border border-white/10"
                     >
-                      <LogIn size={12} /> Enter
+                      <LogIn size={10} />
+                      <span>Enter</span>
                     </button>
                   </div>
                 </div>
