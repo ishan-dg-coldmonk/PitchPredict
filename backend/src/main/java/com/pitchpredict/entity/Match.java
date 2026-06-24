@@ -66,6 +66,15 @@ public class Match {
     @Builder.Default
     private Boolean predictionOpen = true;
 
+    /**
+     * Set to true after PointsCalculationService has run for this match.
+     * Prevents double-calculation if the scheduler fires twice around
+     * the FINISHED transition (e.g. app restart mid-game).
+     */
+    @Column(nullable = false)
+    @Builder.Default
+    private Boolean pointsCalculated = false;
+
     private LocalDateTime lastUpdated;
 
     @PreUpdate

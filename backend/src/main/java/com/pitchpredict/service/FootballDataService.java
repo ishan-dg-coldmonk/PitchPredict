@@ -2,6 +2,7 @@ package com.pitchpredict.service;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.pitchpredict.dto.MatchGoalDTO;
 import com.pitchpredict.entity.Event;
 import com.pitchpredict.entity.Match;
 import com.pitchpredict.enums.MatchStatus;
@@ -14,8 +15,6 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.*;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
-
-import com.pitchpredict.dto.MatchGoalDTO;
 
 import java.time.*;
 import java.time.format.DateTimeFormatter;
@@ -38,7 +37,7 @@ public class FootballDataService {
 
     private final RestTemplate restTemplate = new RestTemplate();
 
-    // ── Sync all matches for an event from football-data.org ────────────────
+    // ── Admin: bulk sync all matches for an event ────────────────────────────
 
     public int syncMatches(Long eventId) {
         Event event = eventRepository.findById(eventId)
@@ -51,9 +50,8 @@ public class FootballDataService {
         String url = baseUrl + "/competitions/" + event.getApiCompId() + "/matches";
 
         if (event.getPredictableStages() != null && !event.getPredictableStages().isBlank()) {
-            String[] stages = event.getPredictableStages().split(",");
             int total = 0;
-            for (String stage : stages) {
+            for (String stage : event.getPredictableStages().split(",")) {
                 total += fetchAndSaveMatches(url + "?stage=" + stage.trim(), eventId);
             }
             return total;
@@ -68,51 +66,25 @@ public class FootballDataService {
         HttpEntity<String> entity = new HttpEntity<>(headers);
 
         try {
-            ResponseEntity<String> response = restTemplate.exchange(url, HttpMethod.GET, entity, String.class);
-            JsonNode root = objectMapper.readTree(response.getBody());
+            ResponseEntity<String> response = restTemplate.exchange(
+                    url, HttpMethod.GET, entity, String.class);
+            JsonNode root    = objectMapper.readTree(response.getBody());
             JsonNode matches = root.path("matches");
 
             int count = 0;
             for (JsonNode m : matches) {
                 long externalId = m.path("id").asLong();
-                Optional<Match> existing = matchRepository.findByExternalMatchId(externalId);
+                Match match = matchRepository.findByExternalMatchId(externalId)
+                        .orElse(Match.builder()
+                                .eventId(eventId)
+                                .externalMatchId(externalId)
+                                .build());
 
-                Match match = existing.orElse(Match.builder()
-                        .eventId(eventId)
-                        .externalMatchId(externalId)
-                        .build());
+                applyMatchFields(match, m);
 
-                match.setHomeTeam(m.path("homeTeam").path("name").asText("TBD"));
-                match.setAwayTeam(m.path("awayTeam").path("name").asText("TBD"));
-                match.setHomeFlag(m.path("homeTeam").path("tla").asText(null));
-                match.setAwayFlag(m.path("awayTeam").path("tla").asText(null));
-                match.setHomeCrest(m.path("homeTeam").path("crest").asText(null));
-                match.setAwayCrest(m.path("awayTeam").path("crest").asText(null));
-
-                String utcDate = m.path("utcDate").asText();
-                ZonedDateTime zdt = ZonedDateTime.parse(utcDate, DateTimeFormatter.ISO_DATE_TIME);
-                match.setMatchDate(zdt.withZoneSameInstant(ZoneId.systemDefault()).toLocalDateTime());
-
-                match.setStage(m.path("stage").asText(null));
-
-                String group = m.path("group").asText(null);
-                if (group != null && group.startsWith("GROUP_")) {
-                    group = group.substring(6);
-                }
-                match.setGroupName(group);
-                match.setVenue(m.path("venue").asText(null));
-
-                // For completed matches during sync, set full-time score
-                String apiStatus = m.path("status").asText("SCHEDULED");
-                MatchStatus status = mapApiStatus(apiStatus);
-                match.setStatus(status);
-
-                if (status == MatchStatus.FINISHED) {
-                    JsonNode ftScore = m.path("score").path("fullTime");
-                    if (!ftScore.path("home").isNull()) {
-                        match.setHomeScore(ftScore.path("home").asInt());
-                        match.setAwayScore(ftScore.path("away").asInt());
-                    }
+                // For already-finished matches set the full-time score immediately
+                if (match.getStatus() == MatchStatus.FINISHED) {
+                    applyFullTimeScore(match, m);
                 }
 
                 matchRepository.save(match);
@@ -122,129 +94,153 @@ public class FootballDataService {
             log.info("Synced {} matches for event {}", count, eventId);
             return count;
         } catch (Exception e) {
-            log.error("Failed to sync matches from football-data.org", e);
+            log.error("Failed to sync matches: {}", e.getMessage());
             throw ApiException.badRequest("Failed to sync: " + e.getMessage());
         }
     }
 
-    // ── Live score updater (called every minute by MatchScoreUpdater) ────────
+    // ── Scheduler: poll one match by its external ID and update DB ───────────
+    //
+    // Called by MatchScoreUpdater for every match in the active time window.
+    // Returns Optional.empty() if the API call fails — caller skips that match.
+    // Never throws.
 
-    public void updateLiveScores() {
-        List<Match> candidates = matchRepository.findByStatusIn(
-                List.of(MatchStatus.LIVE, MatchStatus.SCHEDULED, MatchStatus.SUSPENDED));
+    public Optional<Match> pollSingleMatch(Match match) {
+        if (match.getExternalMatchId() == null) return Optional.empty();
 
-        for (Match match : candidates) {
-            if (match.getExternalMatchId() == null) continue;
+        try {
+            HttpHeaders headers = new HttpHeaders();
+            headers.set("X-Auth-Token", apiKey);
+            HttpEntity<String> entity = new HttpEntity<>(headers);
 
-            // For scheduled matches, only poll once they're within 5 minutes of kick-off
-            if (match.getStatus() == MatchStatus.SCHEDULED) {
-                if (match.getMatchDate().isAfter(LocalDateTime.now().plusMinutes(5))) {
-                    continue;
-                }
+            String url = baseUrl + "/matches/" + match.getExternalMatchId();
+            ResponseEntity<String> response = restTemplate.exchange(
+                    url, HttpMethod.GET, entity, String.class);
+            JsonNode m = objectMapper.readTree(response.getBody());
+
+            MatchStatus oldStatus = match.getStatus();
+            MatchStatus newStatus = mapApiStatus(m.path("status").asText("SCHEDULED"));
+            match.setStatus(newStatus);
+
+            // ── Score update ─────────────────────────────────────────────────
+            //
+            // football-data.org v4 populates score.fullTime in real time during
+            // the match — it is NOT only available after full time.
+            //
+            // We only read fullTime.  We intentionally never fall back to
+            // halfTime because PAUSED (half-time) maps to LIVE in our system,
+            // and showing the half-time score made the card look "finished" at HT.
+
+            if (newStatus == MatchStatus.LIVE || newStatus == MatchStatus.FINISHED) {
+                applyFullTimeScore(match, m);
             }
 
-            try {
-                HttpHeaders headers = new HttpHeaders();
-                headers.set("X-Auth-Token", apiKey);
-                HttpEntity<String> entity = new HttpEntity<>(headers);
-
-                String url = baseUrl + "/matches/" + match.getExternalMatchId();
-                ResponseEntity<String> response = restTemplate.exchange(url, HttpMethod.GET, entity, String.class);
-                JsonNode m = objectMapper.readTree(response.getBody());
-
-                String apiStatus = m.path("status").asText("SCHEDULED");
-                MatchStatus newStatus = mapApiStatus(apiStatus);
-                MatchStatus oldStatus = match.getStatus();
-
-                match.setStatus(newStatus);
-
-                // ─── SCORE LOGIC ──────────────────────────────────────────────
-                // football-data.org v4 returns:
-                //   score.fullTime  → goals scored in 90 min (populated during play and after)
-                //   score.halfTime  → half-time score (only meaningful at PAUSED/after)
-                //   score.regularTime, extraTime, penalties also available
-                //
-                // FIX: NEVER use halfTime score to display on the card.
-                // We only show score for LIVE or FINISHED matches, and we
-                // always read from fullTime (which the API fills in real-time
-                // during the match). halfTime is only for reference, not display.
-                // This prevents the "match ended at half-time" bug.
-
-                JsonNode ftScore = m.path("score").path("fullTime");
-
-                if (newStatus == MatchStatus.LIVE || newStatus == MatchStatus.FINISHED) {
-                    // fullTime.home is null before the match starts, then fills in as play progresses
-                    if (!ftScore.path("home").isNull() && !ftScore.path("away").isNull()) {
-                        match.setHomeScore(ftScore.path("home").asInt());
-                        match.setAwayScore(ftScore.path("away").asInt());
-                    }
-                }
-
-                // Only extract goals for FINISHED matches (avoid partial goal lists)
-                if (newStatus == MatchStatus.FINISHED) {
-                    match.setGoalsJson(extractGoalsJson(m));
-                }
-
-                matchRepository.save(match);
-
-                if (oldStatus != MatchStatus.FINISHED && newStatus == MatchStatus.FINISHED) {
-                    log.info("Match {} finished: {} {} - {} {}",
-                            match.getId(), match.getHomeTeam(), match.getHomeScore(),
-                            match.getAwayScore(), match.getAwayTeam());
-                }
-
-            } catch (Exception e) {
-                log.warn("Failed to update match {}: {}", match.getExternalMatchId(), e.getMessage());
+            // Extract goal scorers only once the match is completely done
+            if (newStatus == MatchStatus.FINISHED) {
+                String goalsJson = extractGoalsJson(m);
+                if (goalsJson != null) match.setGoalsJson(goalsJson);
             }
+
+            matchRepository.save(match);
+
+            if (oldStatus != newStatus) {
+                log.info("Match {} ({} vs {}): {} → {}",
+                        match.getId(), match.getHomeTeam(), match.getAwayTeam(),
+                        oldStatus, newStatus);
+            }
+
+            return Optional.of(match);
+
+        } catch (Exception e) {
+            log.warn("pollSingleMatch failed for match {} (extId={}): {}",
+                    match.getId(), match.getExternalMatchId(), e.getMessage());
+            return Optional.empty();
         }
     }
 
-    // ── Sync goals for finished matches that don't have goal data yet ────────
+    // ── Admin: sync goal scorers for finished matches missing goal data ───────
 
     public int syncGoalsForEvent(Long eventId) {
-        List<Match> finishedMatches = matchRepository.findByEventIdOrderByMatchDateAsc(eventId).stream()
+        List<Match> targets = matchRepository.findByEventIdOrderByMatchDateAsc(eventId).stream()
                 .filter(m -> m.getStatus() == MatchStatus.FINISHED)
                 .filter(m -> m.getExternalMatchId() != null)
                 .filter(m -> m.getGoalsJson() == null || m.getGoalsJson().isBlank())
                 .toList();
 
         int synced = 0;
-        for (Match match : finishedMatches) {
+        for (Match match : targets) {
             try {
                 HttpHeaders headers = new HttpHeaders();
                 headers.set("X-Auth-Token", apiKey);
                 HttpEntity<String> entity = new HttpEntity<>(headers);
 
-                String url = baseUrl + "/matches/" + match.getExternalMatchId();
-                ResponseEntity<String> response = restTemplate.exchange(url, HttpMethod.GET, entity, String.class);
+                ResponseEntity<String> response = restTemplate.exchange(
+                        baseUrl + "/matches/" + match.getExternalMatchId(),
+                        HttpMethod.GET, entity, String.class);
                 JsonNode m = objectMapper.readTree(response.getBody());
 
-                match.setGoalsJson(extractGoalsJson(m));
-                matchRepository.save(match);
-                synced++;
+                String goalsJson = extractGoalsJson(m);
+                if (goalsJson != null) {
+                    match.setGoalsJson(goalsJson);
+                    matchRepository.save(match);
+                    synced++;
+                }
 
-                Thread.sleep(7000); // respect API rate limit
+                Thread.sleep(7000); // stay within 10 req/min on free tier
             } catch (InterruptedException ie) {
                 Thread.currentThread().interrupt();
                 break;
             } catch (Exception e) {
-                log.warn("Failed to fetch goals for match {}: {}", match.getExternalMatchId(), e.getMessage());
+                log.warn("Goals sync failed for match {}: {}",
+                        match.getExternalMatchId(), e.getMessage());
             }
         }
-        log.info("Synced goals for {} matches", synced);
+        log.info("Synced goals for {} matches in event {}", synced, eventId);
         return synced;
     }
 
-    // ── Helpers ─────────────────────────────────────────────────────────────
+    // ── Helpers ──────────────────────────────────────────────────────────────
+
+    private void applyMatchFields(Match match, JsonNode m) {
+        match.setHomeTeam(m.path("homeTeam").path("name").asText("TBD"));
+        match.setAwayTeam(m.path("awayTeam").path("name").asText("TBD"));
+        match.setHomeFlag(m.path("homeTeam").path("tla").asText(null));
+        match.setAwayFlag(m.path("awayTeam").path("tla").asText(null));
+        match.setHomeCrest(m.path("homeTeam").path("crest").asText(null));
+        match.setAwayCrest(m.path("awayTeam").path("crest").asText(null));
+        match.setVenue(m.path("venue").asText(null));
+
+        String utcDate = m.path("utcDate").asText(null);
+        if (utcDate != null && !utcDate.isBlank()) {
+            ZonedDateTime zdt = ZonedDateTime.parse(utcDate, DateTimeFormatter.ISO_DATE_TIME);
+            match.setMatchDate(zdt.withZoneSameInstant(ZoneId.systemDefault()).toLocalDateTime());
+        }
+
+        match.setStage(m.path("stage").asText(null));
+
+        String group = m.path("group").asText(null);
+        if (group != null && group.startsWith("GROUP_")) group = group.substring(6);
+        match.setGroupName(group);
+
+        match.setStatus(mapApiStatus(m.path("status").asText("SCHEDULED")));
+    }
+
+    private void applyFullTimeScore(Match match, JsonNode m) {
+        JsonNode ft = m.path("score").path("fullTime");
+        if (!ft.path("home").isNull() && !ft.path("away").isNull()) {
+            match.setHomeScore(ft.path("home").asInt());
+            match.setAwayScore(ft.path("away").asInt());
+        }
+    }
 
     private String extractGoalsJson(JsonNode matchNode) {
         JsonNode goals = matchNode.path("goals");
         if (goals.isMissingNode() || !goals.isArray() || goals.isEmpty()) return null;
 
-        List<MatchGoalDTO> goalList = new ArrayList<>();
+        List<MatchGoalDTO> list = new ArrayList<>();
         for (JsonNode g : goals) {
-            goalList.add(MatchGoalDTO.builder()
-                    .minute(g.path("minute").isNull() ? null : g.path("minute").asInt())
+            list.add(MatchGoalDTO.builder()
+                    .minute(g.path("minute").isNull()         ? null : g.path("minute").asInt())
                     .injuryTime(g.path("injuryTime").isNull() ? null : g.path("injuryTime").asInt())
                     .type(g.path("type").asText(null))
                     .teamName(g.path("team").path("name").asText(null))
@@ -253,7 +249,7 @@ public class FootballDataService {
                     .build());
         }
         try {
-            return objectMapper.writeValueAsString(goalList);
+            return objectMapper.writeValueAsString(list);
         } catch (Exception e) {
             log.warn("Failed to serialize goals: {}", e.getMessage());
             return null;
@@ -263,34 +259,23 @@ public class FootballDataService {
     /**
      * Maps football-data.org v4 status strings to our MatchStatus enum.
      *
-     * football-data.org v4 statuses:
-     *   SCHEDULED   – not started
-     *   TIMED       – scheduled with confirmed time
-     *   IN_PLAY     – currently playing (1st or 2nd half)
-     *   PAUSED      – half-time break  ← KEY: this is NOT finished, it's half-time
-     *   EXTRA_TIME  – extra time in play
-     *   PENALTY_SHOOTOUT – penalties
-     *   FINISHED    – full-time completed
-     *   AWARDED     – awarded result (e.g. walkover)
-     *   SUSPENDED   – temporarily suspended
-     *   POSTPONED   – postponed to a new date
-     *   CANCELLED   – cancelled entirely
+     *   SCHEDULED / TIMED              → SCHEDULED
+     *   IN_PLAY                        → LIVE  (1st or 2nd half)
+     *   PAUSED                         → LIVE  (half-time — still live, NOT finished)
+     *   EXTRA_TIME / PENALTY_SHOOTOUT  → LIVE
+     *   FINISHED / AWARDED             → FINISHED
+     *   SUSPENDED                      → SUSPENDED
+     *   POSTPONED                      → POSTPONED
+     *   CANCELLED                      → CANCELLED
      */
-    private MatchStatus mapApiStatus(String apiStatus) {
+    public MatchStatus mapApiStatus(String apiStatus) {
         return switch (apiStatus) {
-            // Completed – calculate points
-            case "FINISHED", "AWARDED" -> MatchStatus.FINISHED;
-
-            // In play – PAUSED means half-time, still a live match, NOT finished
+            case "FINISHED", "AWARDED"                                  -> MatchStatus.FINISHED;
             case "IN_PLAY", "PAUSED", "EXTRA_TIME", "PENALTY_SHOOTOUT" -> MatchStatus.LIVE;
-
-            // Other states
-            case "SUSPENDED" -> MatchStatus.SUSPENDED;
-            case "POSTPONED"  -> MatchStatus.POSTPONED;
-            case "CANCELLED"  -> MatchStatus.CANCELLED;
-
-            // SCHEDULED, TIMED, and anything unknown
-            default -> MatchStatus.SCHEDULED;
+            case "SUSPENDED"                                            -> MatchStatus.SUSPENDED;
+            case "POSTPONED"                                            -> MatchStatus.POSTPONED;
+            case "CANCELLED"                                            -> MatchStatus.CANCELLED;
+            default                                                     -> MatchStatus.SCHEDULED;
         };
     }
 }
