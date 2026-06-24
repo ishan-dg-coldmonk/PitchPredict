@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   Settings, Plus, RefreshCw, Play, Square, Users,
-  ChevronDown, ChevronUp, Trophy, UserCheck, X, ArrowLeft,
+  ChevronDown, ChevronUp, Trophy, UserCheck, X,
 } from 'lucide-react'
 import Navbar from '../components/Navbar'
 import LeaderboardTable from '../components/LeaderboardTable'
@@ -11,11 +11,10 @@ import { formatDate } from '../utils/helpers'
 import API from '../api/axios'
 import toast from 'react-hot-toast'
 
-// ── small sub-components ────────────────────────────────────────────────────
-
+// ── Room Members modal ───────────────────────────────────────────────────────
 function RoomMembersPanel({ roomId, roomName, onClose }) {
-  const [members, setMembers] = useState([])
-  const [loading, setLoading] = useState(true)
+  const [members, setMembers]   = useState([])
+  const [loading, setLoading]   = useState(true)
 
   useEffect(() => {
     API.get(`/admin/rooms/${roomId}/members`)
@@ -25,13 +24,14 @@ function RoomMembersPanel({ roomId, roomName, onClose }) {
 
   return (
     <motion.div
-      initial={{ opacity: 0, scale: 0.96, y: 10 }}
-      animate={{ opacity: 1, scale: 1, y: 0 }}
-      exit={{ opacity: 0, scale: 0.96, y: 10 }}
+      initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
       className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4"
       onClick={onClose}
     >
-      <div
+      <motion.div
+        initial={{ opacity: 0, scale: 0.96, y: 10 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        exit={{ opacity: 0, scale: 0.96, y: 10 }}
         className="bg-[#12121e] border border-white/10 rounded-2xl p-6 w-full max-w-lg max-h-[80vh] overflow-y-auto shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
@@ -59,7 +59,8 @@ function RoomMembersPanel({ roomId, roomName, onClose }) {
                 <div className="w-8 h-8 rounded-full bg-gradient-to-br from-primary/30 to-secondary/30 flex items-center justify-center text-white text-xs font-bold overflow-hidden flex-shrink-0">
                   {m.profilePic
                     ? <img src={m.profilePic} alt="" className="w-full h-full object-cover" />
-                    : m.username?.[0]?.toUpperCase()}
+                    : m.username?.[0]?.toUpperCase()
+                  }
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="text-sm font-semibold text-white truncate">{m.username}</div>
@@ -67,17 +68,20 @@ function RoomMembersPanel({ roomId, roomName, onClose }) {
                 </div>
                 <div className="text-[10px] text-gray-600 text-right">
                   Joined<br />
-                  {m.joinedAt ? new Date(m.joinedAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }) : '—'}
+                  {m.joinedAt
+                    ? new Date(m.joinedAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })
+                    : '—'}
                 </div>
               </div>
             ))}
           </div>
         )}
-      </div>
+      </motion.div>
     </motion.div>
   )
 }
 
+// ── Room Leaderboard modal ───────────────────────────────────────────────────
 function RoomLeaderboardPanel({ roomId, roomName, onClose }) {
   const [entries, setEntries] = useState([])
   const [loading, setLoading] = useState(true)
@@ -90,13 +94,14 @@ function RoomLeaderboardPanel({ roomId, roomName, onClose }) {
 
   return (
     <motion.div
-      initial={{ opacity: 0, scale: 0.96, y: 10 }}
-      animate={{ opacity: 1, scale: 1, y: 0 }}
-      exit={{ opacity: 0, scale: 0.96, y: 10 }}
+      initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
       className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4"
       onClick={onClose}
     >
-      <div
+      <motion.div
+        initial={{ opacity: 0, scale: 0.96, y: 10 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        exit={{ opacity: 0, scale: 0.96, y: 10 }}
         className="bg-[#12121e] border border-white/10 rounded-2xl p-6 w-full max-w-2xl max-h-[85vh] overflow-y-auto shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
@@ -119,23 +124,22 @@ function RoomLeaderboardPanel({ roomId, roomName, onClose }) {
         ) : (
           <LeaderboardTable entries={entries} />
         )}
-      </div>
+      </motion.div>
     </motion.div>
   )
 }
 
-// ── event row with expandable rooms ─────────────────────────────────────────
-
+// ── EventRow with expandable rooms ───────────────────────────────────────────
 function EventRow({ event, onReload }) {
   const colors = STATUS_COLORS[event.status] || STATUS_COLORS.UPCOMING
-  const [expanded, setExpanded] = useState(false)
-  const [rooms, setRooms] = useState([])
+  const [expanded, setExpanded]         = useState(false)
+  const [rooms, setRooms]               = useState([])
   const [roomsLoading, setRoomsLoading] = useState(false)
-  const [roomsLoaded, setRoomsLoaded] = useState(false)
-  const [syncing, setSyncing] = useState(false)
-  const [roomForm, setRoomForm] = useState(null)
-  const [showingMembers, setShowingMembers] = useState(null)   // { id, name }
-  const [showingLeaderboard, setShowingLeaderboard] = useState(null) // { id, name }
+  const [roomsLoaded, setRoomsLoaded]   = useState(false)
+  const [syncing, setSyncing]           = useState(false)
+  const [roomForm, setRoomForm]         = useState(null)
+  const [showingMembers, setShowingMembers]         = useState(null)
+  const [showingLeaderboard, setShowingLeaderboard] = useState(null)
 
   const loadRooms = async () => {
     if (roomsLoaded) return
@@ -198,12 +202,8 @@ function EventRow({ event, onReload }) {
 
   return (
     <>
-      <motion.div
-        initial={{ opacity: 0, y: 10 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="glass-card p-5"
-      >
-        {/* Event header row */}
+      <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="glass-card p-5">
+        {/* Event header */}
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 mb-1">
@@ -212,91 +212,68 @@ function EventRow({ event, onReload }) {
                 {event.status}
               </span>
             </div>
+            {event.prize && (
+              <div className="flex items-center gap-1 mb-1">
+                <Trophy size={12} className="text-yellow-400" />
+                <span className="text-xs font-semibold text-yellow-400">{event.prize}</span>
+              </div>
+            )}
             <div className="text-xs text-gray-500">
               {formatDate(event.startDate)} – {formatDate(event.endDate)}
-              &nbsp;&middot;&nbsp;{event.roomCount || 0} rooms
-              &nbsp;&middot;&nbsp;{event.matchCount || 0} matches
+              &nbsp;·&nbsp;{event.roomCount || 0} rooms
+              &nbsp;·&nbsp;{event.matchCount || 0} matches
             </div>
           </div>
 
           <div className="flex items-center gap-2 flex-wrap">
-            <button
-              onClick={handleSync}
-              disabled={syncing}
-              className="flex items-center gap-1.5 text-xs bg-white/10 hover:bg-white/20 text-white px-3 py-2 rounded-lg transition-colors"
-            >
+            <button onClick={handleSync} disabled={syncing}
+              className="flex items-center gap-1.5 text-xs bg-white/10 hover:bg-white/20 text-white px-3 py-2 rounded-lg transition-colors">
               <RefreshCw size={14} className={syncing ? 'animate-spin' : ''} /> Sync
             </button>
-
             <button
               onClick={() => setRoomForm(roomForm ? null : { name: '', description: '', registrationCode: '', maxMembers: '' })}
-              className="flex items-center gap-1.5 text-xs bg-white/10 hover:bg-white/20 text-white px-3 py-2 rounded-lg transition-colors"
-            >
+              className="flex items-center gap-1.5 text-xs bg-white/10 hover:bg-white/20 text-white px-3 py-2 rounded-lg transition-colors">
               <Users size={14} /> + Room
             </button>
-
             {event.status === 'UPCOMING' && (
-              <button onClick={handleActivate} className="flex items-center gap-1.5 text-xs bg-accent/20 hover:bg-accent/30 text-accent px-3 py-2 rounded-lg transition-colors">
+              <button onClick={handleActivate}
+                className="flex items-center gap-1.5 text-xs bg-accent/20 hover:bg-accent/30 text-accent px-3 py-2 rounded-lg transition-colors">
                 <Play size={14} /> Activate
               </button>
             )}
             {event.status === 'ACTIVE' && (
-              <button onClick={handleFinish} className="flex items-center gap-1.5 text-xs bg-red-500/20 hover:bg-red-500/30 text-red-400 px-3 py-2 rounded-lg transition-colors">
+              <button onClick={handleFinish}
+                className="flex items-center gap-1.5 text-xs bg-red-500/20 hover:bg-red-500/30 text-red-400 px-3 py-2 rounded-lg transition-colors">
                 <Square size={14} /> Finish
               </button>
             )}
-
-            {/* Expand/collapse rooms */}
-            <button
-              onClick={toggleExpand}
-              className="flex items-center gap-1.5 text-xs bg-primary/15 hover:bg-primary/25 text-primary px-3 py-2 rounded-lg transition-colors"
-            >
-              {expanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-              Rooms
+            <button onClick={toggleExpand}
+              className="flex items-center gap-1.5 text-xs bg-primary/15 hover:bg-primary/25 text-primary px-3 py-2 rounded-lg transition-colors">
+              {expanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />} Rooms
             </button>
           </div>
         </div>
 
-        {/* Create room inline form */}
+        {/* Create room form */}
         <AnimatePresence>
           {roomForm && (
             <motion.div
-              initial={{ opacity: 0, height: 0 }}
-              animate={{ opacity: 1, height: 'auto' }}
+              initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }}
               exit={{ opacity: 0, height: 0 }}
               className="mt-4 pt-4 border-t border-white/10 overflow-hidden"
             >
               <p className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-3">New Room</p>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                <input
-                  placeholder="Room Name *"
-                  value={roomForm.name}
-                  onChange={(e) => setRoomForm((f) => ({ ...f, name: e.target.value }))}
-                  className="input-field"
-                />
-                <input
-                  placeholder="Registration Code *"
-                  value={roomForm.registrationCode}
-                  onChange={(e) => setRoomForm((f) => ({ ...f, registrationCode: e.target.value }))}
-                  className="input-field"
-                />
-                <input
-                  placeholder="Description"
-                  value={roomForm.description}
-                  onChange={(e) => setRoomForm((f) => ({ ...f, description: e.target.value }))}
-                  className="input-field"
-                />
-                <input
-                  type="number"
-                  placeholder="Max Members (optional)"
-                  value={roomForm.maxMembers}
-                  onChange={(e) => setRoomForm((f) => ({ ...f, maxMembers: e.target.value }))}
-                  className="input-field"
-                />
+                <input placeholder="Room Name *" value={roomForm.name}
+                  onChange={(e) => setRoomForm((f) => ({ ...f, name: e.target.value }))} className="input-field" />
+                <input placeholder="Registration Code *" value={roomForm.registrationCode}
+                  onChange={(e) => setRoomForm((f) => ({ ...f, registrationCode: e.target.value }))} className="input-field" />
+                <input placeholder="Description" value={roomForm.description}
+                  onChange={(e) => setRoomForm((f) => ({ ...f, description: e.target.value }))} className="input-field" />
+                <input type="number" placeholder="Max Members (optional)" value={roomForm.maxMembers}
+                  onChange={(e) => setRoomForm((f) => ({ ...f, maxMembers: e.target.value }))} className="input-field" />
               </div>
-              <button onClick={handleCreateRoom} className="btn-accent mt-3 text-sm">
-                Create Room
-              </button>
+              <button onClick={handleCreateRoom} className="btn-accent mt-3 text-sm">Create Room</button>
             </motion.div>
           )}
         </AnimatePresence>
@@ -305,24 +282,21 @@ function EventRow({ event, onReload }) {
         <AnimatePresence>
           {expanded && (
             <motion.div
-              initial={{ opacity: 0, height: 0 }}
-              animate={{ opacity: 1, height: 'auto' }}
+              initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }}
               exit={{ opacity: 0, height: 0 }}
               className="mt-4 pt-4 border-t border-white/10 overflow-hidden"
             >
               {roomsLoading ? (
                 <div className="py-6 flex justify-center">
-                  <div className="w-7 h-7 border-3 border-primary/30 border-t-primary rounded-full animate-spin" />
+                  <div className="w-7 h-7 border-4 border-primary/30 border-t-primary rounded-full animate-spin" />
                 </div>
               ) : rooms.length === 0 ? (
                 <p className="text-gray-500 text-sm text-center py-4">No rooms created yet</p>
               ) : (
                 <div className="space-y-3">
                   {rooms.map((room) => (
-                    <div
-                      key={room.id}
-                      className="flex items-center justify-between gap-3 bg-white/[0.03] rounded-xl p-4 border border-white/[0.06]"
-                    >
+                    <div key={room.id}
+                      className="flex items-center justify-between gap-3 bg-white/[0.03] rounded-xl p-4 border border-white/[0.06]">
                       <div className="flex-1 min-w-0">
                         <div className="text-sm font-bold text-white truncate">{room.name}</div>
                         {room.description && (
@@ -332,22 +306,19 @@ function EventRow({ event, onReload }) {
                           <Users size={11} />
                           {room.memberCount} {room.memberCount === 1 ? 'member' : 'members'}
                           {room.maxMembers && ` / ${room.maxMembers} max`}
-                          <span className="text-gray-700">&middot;</span>
+                          <span className="text-gray-700">·</span>
                           <span className="font-mono text-gray-600">Code: {room.registrationCode}</span>
                         </div>
                       </div>
-
                       <div className="flex items-center gap-2 flex-shrink-0">
                         <button
                           onClick={() => setShowingLeaderboard({ id: room.id, name: room.name })}
-                          className="flex items-center gap-1.5 text-xs bg-gold/10 hover:bg-gold/20 text-gold px-3 py-1.5 rounded-lg transition-colors border border-gold/20"
-                        >
+                          className="flex items-center gap-1.5 text-xs bg-yellow-500/10 hover:bg-yellow-500/20 text-yellow-400 px-3 py-1.5 rounded-lg transition-colors border border-yellow-500/20">
                           <Trophy size={12} /> Leaderboard
                         </button>
                         <button
                           onClick={() => setShowingMembers({ id: room.id, name: room.name })}
-                          className="flex items-center gap-1.5 text-xs bg-primary/10 hover:bg-primary/20 text-primary px-3 py-1.5 rounded-lg transition-colors border border-primary/20"
-                        >
+                          className="flex items-center gap-1.5 text-xs bg-primary/10 hover:bg-primary/20 text-primary px-3 py-1.5 rounded-lg transition-colors border border-primary/20">
                           <UserCheck size={12} /> Members
                         </button>
                       </div>
@@ -382,13 +353,12 @@ function EventRow({ event, onReload }) {
 }
 
 // ── Main AdminPage ───────────────────────────────────────────────────────────
-
 export default function AdminPage() {
-  const [events, setEvents] = useState([])
+  const [events, setEvents]       = useState([])
   const [showCreate, setShowCreate] = useState(false)
   const [form, setForm] = useState({
     title: '', description: '', apiCompId: '', startDate: '', endDate: '',
-    predictableStages: '', bannerUrl: '',
+    predictableStages: '', bannerUrl: '', prize: '',
   })
 
   const loadEvents = () => API.get('/events').then((r) => setEvents(r.data))
@@ -399,13 +369,15 @@ export default function AdminPage() {
     try {
       await API.post('/admin/events', form)
       toast.success('Event created!')
-      setForm({ title: '', description: '', apiCompId: '', startDate: '', endDate: '', predictableStages: '', bannerUrl: '' })
+      setForm({ title: '', description: '', apiCompId: '', startDate: '', endDate: '', predictableStages: '', bannerUrl: '', prize: '' })
       setShowCreate(false)
       loadEvents()
     } catch (err) {
       toast.error(err.response?.data?.error || 'Failed to create')
     }
   }
+
+  const set = (k, v) => setForm((f) => ({ ...f, [k]: v }))
 
   return (
     <div className="min-h-screen bg-navy">
@@ -434,13 +406,22 @@ export default function AdminPage() {
             >
               <h2 className="text-lg font-bold text-white mb-4">Create Event</h2>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <input placeholder="Title *" value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} className="input-field" required />
-                <input placeholder="API Competition ID (e.g. 2000)" value={form.apiCompId} onChange={(e) => setForm({ ...form, apiCompId: e.target.value })} className="input-field" />
-                <input placeholder="Description" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} className="input-field md:col-span-2" />
-                <input type="date" value={form.startDate} onChange={(e) => setForm({ ...form, startDate: e.target.value })} className="input-field" required />
-                <input type="date" value={form.endDate} onChange={(e) => setForm({ ...form, endDate: e.target.value })} className="input-field" required />
-                <input placeholder="Predictable Stages (e.g. GROUP_STAGE,ROUND_OF_16)" value={form.predictableStages} onChange={(e) => setForm({ ...form, predictableStages: e.target.value })} className="input-field" />
-                <input placeholder="Banner URL" value={form.bannerUrl} onChange={(e) => setForm({ ...form, bannerUrl: e.target.value })} className="input-field" />
+                <input placeholder="Title *" value={form.title}
+                  onChange={(e) => set('title', e.target.value)} className="input-field" required />
+                <input placeholder="API Competition ID (e.g. 2000)" value={form.apiCompId}
+                  onChange={(e) => set('apiCompId', e.target.value)} className="input-field" />
+                <input placeholder="Description" value={form.description}
+                  onChange={(e) => set('description', e.target.value)} className="input-field md:col-span-2" />
+                <input type="date" value={form.startDate}
+                  onChange={(e) => set('startDate', e.target.value)} className="input-field" required />
+                <input type="date" value={form.endDate}
+                  onChange={(e) => set('endDate', e.target.value)} className="input-field" required />
+                <input placeholder="Prize (e.g. ₹10,000 Cash Prize)" value={form.prize}
+                  onChange={(e) => set('prize', e.target.value)} className="input-field" />
+                <input placeholder="Predictable Stages (e.g. GROUP_STAGE,ROUND_OF_16)" value={form.predictableStages}
+                  onChange={(e) => set('predictableStages', e.target.value)} className="input-field" />
+                <input placeholder="Banner URL" value={form.bannerUrl}
+                  onChange={(e) => set('bannerUrl', e.target.value)} className="input-field md:col-span-2" />
               </div>
               <button type="submit" className="btn-primary mt-4">Create Event</button>
             </motion.form>

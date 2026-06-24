@@ -12,7 +12,7 @@ import { useAuth } from '../context/AuthContext'
 import { getESTDayKey, getDayLabelEST, formatTimeIST, todayESTKey } from '../utils/helpers'
 import API from '../api/axios'
 
-// ── animation variants ───────────────────────────────────────────────────────
+// ── animation helpers ────────────────────────────────────────────────────────
 const snapIn = {
   hidden: { opacity: 0, y: 14 },
   visible: (i) => ({
@@ -23,22 +23,16 @@ const snapIn = {
 const fade = {
   initial: { opacity: 0 },
   animate: { opacity: 1, transition: { duration: 0.15 } },
-  exit:    { opacity: 0, transition: { duration: 0.1  } },
+  exit:    { opacity: 0, transition: { duration: 0.1 } },
 }
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
-/** Featured: first LIVE → first upcoming within 24h → next scheduled */
+/** Featured: first LIVE → first scheduled → nothing */
 function pickFeatured(matches) {
-  const now = new Date()
+  const now  = new Date()
   const live = matches.filter((m) => m.status === 'LIVE')
   if (live.length) return live[0]
-
-  const soon = matches
-    .filter((m) => m.status === 'SCHEDULED')
-    .filter((m) => { const d = new Date(m.matchDate) - now; return d > 0 && d <= 86400000 })
-    .sort((a, b) => new Date(a.matchDate) - new Date(b.matchDate))
-  if (soon.length) return soon[0]
 
   const any = matches
     .filter((m) => m.status === 'SCHEDULED' && new Date(m.matchDate) > now)
@@ -59,7 +53,7 @@ function groupByESTDay(matches) {
 
 // ── All-Predictions modal ────────────────────────────────────────────────────
 function AllPredictionsModal({ match, roomId, onClose }) {
-  const [preds, setPreds]   = useState([])
+  const [preds, setPreds]     = useState([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -73,7 +67,7 @@ function AllPredictionsModal({ match, roomId, onClose }) {
 
   return (
     <motion.div
-      {...fade}
+      initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
       className="fixed inset-0 bg-black/65 backdrop-blur-sm z-50 flex items-center justify-center p-4"
       onClick={onClose}
     >
@@ -94,8 +88,9 @@ function AllPredictionsModal({ match, roomId, onClose }) {
         <div className="text-sm text-gray-400 mb-1">{match.homeTeam} vs {match.awayTeam}</div>
 
         {(isFinished || isLive) && match.homeScore !== null && (
-          <div className={`text-sm font-bold mb-4 ${isLive ? 'text-red-400' : 'text-white'}`}>
-            {isLive ? '🔴 Live: ' : 'Final: '}
+          <div className={`text-sm font-bold mb-4 flex items-center gap-2 ${isLive ? 'text-red-400' : 'text-white'}`}>
+            {isLive && <span className="w-1.5 h-1.5 bg-red-500 rounded-full animate-live-blink" />}
+            {isLive ? 'Live: ' : 'Final: '}
             {match.homeScore} – {match.awayScore}
           </div>
         )}
@@ -109,10 +104,8 @@ function AllPredictionsModal({ match, roomId, onClose }) {
         ) : (
           <div className="space-y-2.5">
             {preds.map((p) => (
-              <div
-                key={p.id}
-                className="flex items-center gap-3 bg-white/[0.04] rounded-xl p-3.5 border border-white/[0.04]"
-              >
+              <div key={p.id}
+                className="flex items-center gap-3 bg-white/[0.04] rounded-xl p-3.5 border border-white/[0.04]">
                 <div className="w-9 h-9 rounded-full bg-gradient-to-br from-primary/30 to-secondary/30 flex items-center justify-center text-white text-xs font-bold overflow-hidden flex-shrink-0">
                   {p.profilePic
                     ? <img src={p.profilePic} alt="" className="w-full h-full object-cover" />
@@ -142,50 +135,44 @@ function AllPredictionsModal({ match, roomId, onClose }) {
 
 // ── Main page ────────────────────────────────────────────────────────────────
 export default function RoomDetailPage() {
-  const { roomId }  = useParams()
-  const { user }    = useAuth()
+  const { roomId } = useParams()
+  const { user }   = useAuth()
 
   const [room, setRoom]               = useState(null)
   const [matches, setMatches]         = useState([])
   const [leaderboard, setLeaderboard] = useState([])
-  const [predictions, setPredictions] = useState({})   // matchId → PredictionDTO
-  const [mainTab, setMainTab]         = useState('matches')   // 'matches' | 'leaderboard'
-  const [matchTab, setMatchTab]       = useState('upcoming')  // 'upcoming' | 'finished'
-  const [selectedMatch, setSelectedMatch]     = useState(null)
-  const [viewAllMatch, setViewAllMatch]       = useState(null)
-  const [loading, setLoading]                 = useState(true)
+  const [predictions, setPredictions] = useState({})
+  const [mainTab, setMainTab]         = useState('matches')
+  const [matchTab, setMatchTab]       = useState('upcoming')
+  const [selectedMatch, setSelectedMatch] = useState(null)
+  const [viewAllMatch, setViewAllMatch]   = useState(null)
+  const [loading, setLoading]             = useState(true)
 
-  // ── derived ─────────────────────────────────────────────────────────────
+  // ── derived ──────────────────────────────────────────────────────────────
   const featuredMatch = useMemo(() => pickFeatured(matches), [matches])
 
-  /** Matches still to be played (SCHEDULED + LIVE + SUSPENDED) */
   const upcomingMatches = useMemo(
     () => matches.filter((m) => m.status !== 'FINISHED' && m.status !== 'CANCELLED' && m.status !== 'POSTPONED'),
     [matches]
   )
-
-  /** Matches that are completely done */
   const finishedMatches = useMemo(
-    () => matches.filter((m) => m.status === 'FINISHED').sort(
-      (a, b) => new Date(b.matchDate) - new Date(a.matchDate) // newest first
-    ),
+    () => [...matches.filter((m) => m.status === 'FINISHED')]
+            .sort((a, b) => new Date(b.matchDate) - new Date(a.matchDate)),
     [matches]
   )
-
-  /** Today's upcoming matches (EST day, shown in IST) */
   const todayMatches = useMemo(() => {
     const key = todayESTKey()
     return upcomingMatches.filter((m) => getESTDayKey(m.matchDate) === key && m.status === 'SCHEDULED')
   }, [upcomingMatches])
 
-  const groupedUpcoming  = useMemo(() => groupByESTDay(upcomingMatches), [upcomingMatches])
-  const groupedFinished  = useMemo(() => groupByESTDay(finishedMatches), [finishedMatches])
+  const groupedUpcoming = useMemo(() => groupByESTDay(upcomingMatches), [upcomingMatches])
+  const groupedFinished = useMemo(() => groupByESTDay(finishedMatches), [finishedMatches])
 
   const liveCount     = useMemo(() => matches.filter((m) => m.status === 'LIVE').length, [matches])
   const finishedCount = finishedMatches.length
   const upcomingCount = upcomingMatches.filter((m) => m.status === 'SCHEDULED').length
 
-  // ── data loading ─────────────────────────────────────────────────────────
+  // ── data ─────────────────────────────────────────────────────────────────
   const loadData = useCallback(async () => {
     try {
       const [roomRes, lbRes] = await Promise.all([
@@ -212,26 +199,27 @@ export default function RoomDetailPage() {
 
   useEffect(() => { loadData() }, [loadData])
 
-  // ── helpers for match list rendering ─────────────────────────────────────
-
-  /**
-   * Whether to show the "View all predictions" eye button on a match card.
-   * Show it when:
-   *   - match is FINISHED, OR
-   *   - prediction window is closed (match started/live) AND current user has predicted
-   */
+  // ── Whether to show "Predictions" eye button ─────────────────────────────
+  //
+  // Show for:
+  //   - FINISHED matches (always — let everyone compare)
+  //   - LIVE matches (always — prediction window is already closed)
+  //   - SCHEDULED matches whose window is closed AND current user has predicted
+  //
   const canViewPredictions = (match) => {
     if (match.status === 'FINISHED') return true
-    if (match.status === 'LIVE') return !!predictions[match.id]
+    if (match.status === 'LIVE')     return true   // ← live matches now viewable
+    // Closed window on a scheduled match — only show if user has predicted
     return !match.predictionOpen && !!predictions[match.id]
   }
 
+  // ── render a single match card ───────────────────────────────────────────
   const renderMatchCard = (match, i) => {
-    const pred         = predictions[match.id]
-    const isFeatured   = featuredMatch?.id === match.id
-    const showViewAll  = canViewPredictions(match)
-    const isFinished   = match.status === 'FINISHED'
-    const isLive       = match.status === 'LIVE'
+    const pred        = predictions[match.id]
+    const isFeatured  = featuredMatch?.id === match.id
+    const showViewAll = canViewPredictions(match)
+    const isFinished  = match.status === 'FINISHED'
+    const isLive      = match.status === 'LIVE'
 
     return (
       <motion.div
@@ -243,7 +231,7 @@ export default function RoomDetailPage() {
         className={isFeatured ? 'ring-1 ring-primary/30 rounded-xl' : ''}
       >
         <MatchCard match={match} onClick={() => setSelectedMatch(match)}>
-          {/* View all predictions */}
+          {/* Predictions eye button */}
           {showViewAll && (
             <button
               onClick={(e) => { e.stopPropagation(); setViewAllMatch(match) }}
@@ -282,7 +270,7 @@ export default function RoomDetailPage() {
     )
   }
 
-  // ── loading / error ───────────────────────────────────────────────────────
+  // ── loading ───────────────────────────────────────────────────────────────
   if (loading) {
     return (
       <div className="min-h-screen bg-[#0a0a12]">
@@ -295,36 +283,32 @@ export default function RoomDetailPage() {
   }
   if (!room) return null
 
-  // ── render ────────────────────────────────────────────────────────────────
   return (
     <div className="min-h-screen bg-[#0a0a12]">
       <Navbar />
       <div className="pt-20 pb-16 max-w-4xl mx-auto px-5">
 
-        {/* ── Room header ────────────────────────────────────────────── */}
+        {/* ── Header ──────────────────────────────────────────────────── */}
         <motion.div {...fade} className="mb-10">
           <p className="text-[11px] uppercase tracking-[0.2em] text-gray-500 mb-1">Event Room</p>
           <h1 className="text-3xl font-extrabold text-white tracking-tight mb-4">{room.name}</h1>
-
           <div className="flex flex-wrap items-center gap-3">
             <span className="flex items-center gap-1.5 text-sm text-gray-400">
               <Users size={14} className="text-gray-500" /> {room.memberCount} members
             </span>
-
             {liveCount > 0 && (
               <span className="flex items-center gap-1.5 text-xs font-semibold text-red-400 bg-red-500/10 border border-red-500/15 px-2.5 py-1 rounded-full">
                 <span className="w-1.5 h-1.5 bg-red-500 rounded-full animate-live-blink" />
                 {liveCount} Live
               </span>
             )}
-
             <span className="text-xs text-gray-500">
               {finishedCount} played · {upcomingCount} upcoming
             </span>
           </div>
         </motion.div>
 
-        {/* ── Main tabs ──────────────────────────────────────────────── */}
+        {/* ── Main tabs ───────────────────────────────────────────────── */}
         <div className="flex gap-1 mb-8 bg-white/[0.03] p-1 rounded-xl w-fit">
           {['matches', 'leaderboard'].map((t) => (
             <button
@@ -343,16 +327,14 @@ export default function RoomDetailPage() {
 
         <AnimatePresence mode="wait">
 
-          {/* ═══════════════════════════════════════════════════════════
-              MATCHES TAB
-          ═══════════════════════════════════════════════════════════ */}
+          {/* ════════════════════ MATCHES TAB ════════════════════ */}
           {mainTab === 'matches' && (
             <motion.div key="matches" {...fade}>
               {matches.length === 0 ? (
                 <div className="py-16 text-center text-gray-500 text-sm">No matches scheduled yet</div>
               ) : (
                 <>
-                  {/* ── Featured match ─────────────────────────────── */}
+                  {/* Featured match */}
                   {featuredMatch && (
                     <div className="mb-8">
                       <div className="flex items-center gap-2 mb-3">
@@ -368,7 +350,6 @@ export default function RoomDetailPage() {
                         match={featuredMatch}
                         onClick={() => setSelectedMatch(featuredMatch)}
                       />
-                      {/* User's prediction on the featured match */}
                       {predictions[featuredMatch.id] && (
                         <div className="mt-2 flex items-center gap-2 px-1">
                           <span className="text-xs text-gray-500">Your pick:</span>
@@ -380,7 +361,9 @@ export default function RoomDetailPage() {
                           {predictions[featuredMatch.id].points != null && (
                             <>
                               <span className="text-xs text-gray-500">·</span>
-                              <span className="text-xs font-bold text-accent">{predictions[featuredMatch.id].points} pts</span>
+                              <span className="text-xs font-bold text-accent">
+                                {predictions[featuredMatch.id].points} pts
+                              </span>
                             </>
                           )}
                         </div>
@@ -388,7 +371,7 @@ export default function RoomDetailPage() {
                     </div>
                   )}
 
-                  {/* ── Today's matches horizontal strip ───────────── */}
+                  {/* Today's strip */}
                   {todayMatches.length > 0 && (
                     <div className="mb-8">
                       <div className="flex items-center gap-2 mb-4">
@@ -405,8 +388,7 @@ export default function RoomDetailPage() {
                           return (
                             <motion.div
                               key={match.id}
-                              whileHover={{ scale: 1.02 }}
-                              whileTap={{ scale: 0.98 }}
+                              whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}
                               onClick={() => setSelectedMatch(match)}
                               className={`
                                 flex-shrink-0 cursor-pointer rounded-2xl border p-4 min-w-[190px] max-w-[210px]
@@ -444,19 +426,17 @@ export default function RoomDetailPage() {
                     </div>
                   )}
 
-                  {/* ── Upcoming / Finished sub-tabs ───────────────── */}
+                  {/* Sub-tabs: Upcoming / Finished */}
                   <div className="flex items-center gap-1 mb-6 bg-white/[0.025] p-1 rounded-xl w-fit">
                     <button
                       onClick={() => setMatchTab('upcoming')}
                       className={`flex items-center gap-1.5 text-xs font-semibold px-4 py-2 rounded-lg transition-all ${
-                        matchTab === 'upcoming'
-                          ? 'text-white bg-white/10'
-                          : 'text-gray-500 hover:text-gray-300'
+                        matchTab === 'upcoming' ? 'text-white bg-white/10' : 'text-gray-500 hover:text-gray-300'
                       }`}
                     >
                       {liveCount > 0 && <LiveIndicator />}
                       Upcoming & Live
-                      {upcomingCount > 0 && (
+                      {upcomingMatches.length > 0 && (
                         <span className="ml-1 text-[10px] bg-white/10 text-gray-400 rounded-full px-1.5 py-0.5">
                           {upcomingMatches.length}
                         </span>
@@ -465,9 +445,7 @@ export default function RoomDetailPage() {
                     <button
                       onClick={() => setMatchTab('finished')}
                       className={`flex items-center gap-1.5 text-xs font-semibold px-4 py-2 rounded-lg transition-all ${
-                        matchTab === 'finished'
-                          ? 'text-white bg-white/10'
-                          : 'text-gray-500 hover:text-gray-300'
+                        matchTab === 'finished' ? 'text-white bg-white/10' : 'text-gray-500 hover:text-gray-300'
                       }`}
                     >
                       <CheckCircle2 size={12} />
@@ -481,14 +459,11 @@ export default function RoomDetailPage() {
                   </div>
 
                   <AnimatePresence mode="wait">
-
-                    {/* ── Upcoming tab content ─────────────────────── */}
+                    {/* Upcoming tab */}
                     {matchTab === 'upcoming' && (
                       <motion.div key="upcoming" {...fade} className="space-y-8">
                         {upcomingMatches.length === 0 ? (
-                          <div className="py-10 text-center text-gray-500 text-sm">
-                            No upcoming matches
-                          </div>
+                          <div className="py-10 text-center text-gray-500 text-sm">No upcoming matches</div>
                         ) : (
                           groupedUpcoming.map(([dayKey, dayMatches]) => {
                             const label   = getDayLabelEST(dayMatches[0].matchDate)
@@ -512,54 +487,45 @@ export default function RoomDetailPage() {
                       </motion.div>
                     )}
 
-                    {/* ── Finished tab content ─────────────────────── */}
+                    {/* Finished tab */}
                     {matchTab === 'finished' && (
                       <motion.div key="finished" {...fade} className="space-y-8">
                         {finishedMatches.length === 0 ? (
-                          <div className="py-10 text-center text-gray-500 text-sm">
-                            No finished matches yet
-                          </div>
+                          <div className="py-10 text-center text-gray-500 text-sm">No finished matches yet</div>
                         ) : (
-                          groupedFinished.map(([dayKey, dayMatches]) => {
-                            const label = getDayLabelEST(dayMatches[0].matchDate)
-                            return (
-                              <div key={dayKey}>
-                                <div className="flex items-center gap-3 mb-4">
-                                  <div className="flex-1 h-px bg-gradient-to-r from-white/10 to-transparent" />
-                                  <span className="text-[11px] font-bold uppercase tracking-[0.15em] text-gray-500">
-                                    {label}
-                                  </span>
-                                  <div className="flex-1 h-px bg-gradient-to-l from-white/10 to-transparent" />
-                                </div>
-                                <div className="space-y-3">
-                                  {dayMatches.map((m, i) => renderMatchCard(m, i))}
-                                </div>
+                          groupedFinished.map(([dayKey, dayMatches]) => (
+                            <div key={dayKey}>
+                              <div className="flex items-center gap-3 mb-4">
+                                <div className="flex-1 h-px bg-gradient-to-r from-white/10 to-transparent" />
+                                <span className="text-[11px] font-bold uppercase tracking-[0.15em] text-gray-500">
+                                  {getDayLabelEST(dayMatches[0].matchDate)}
+                                </span>
+                                <div className="flex-1 h-px bg-gradient-to-l from-white/10 to-transparent" />
                               </div>
-                            )
-                          })
+                              <div className="space-y-3">
+                                {dayMatches.map((m, i) => renderMatchCard(m, i))}
+                              </div>
+                            </div>
+                          ))
                         )}
                       </motion.div>
                     )}
-
                   </AnimatePresence>
                 </>
               )}
             </motion.div>
           )}
 
-          {/* ═══════════════════════════════════════════════════════════
-              LEADERBOARD TAB
-          ═══════════════════════════════════════════════════════════ */}
+          {/* ════════════════════ LEADERBOARD TAB ════════════════════ */}
           {mainTab === 'leaderboard' && (
             <motion.div key="leaderboard" {...fade}>
               <LeaderboardTable entries={leaderboard} />
             </motion.div>
           )}
-
         </AnimatePresence>
       </div>
 
-      {/* ── Prediction modal ──────────────────────────────────────────────── */}
+      {/* Prediction modal */}
       <AnimatePresence>
         {selectedMatch && (
           <PredictionModal
@@ -574,7 +540,7 @@ export default function RoomDetailPage() {
         )}
       </AnimatePresence>
 
-      {/* ── All predictions modal ─────────────────────────────────────────── */}
+      {/* All predictions modal */}
       <AnimatePresence>
         {viewAllMatch && (
           <AllPredictionsModal

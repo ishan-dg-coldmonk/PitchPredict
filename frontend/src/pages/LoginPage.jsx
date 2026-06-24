@@ -1,18 +1,18 @@
 import { useState } from 'react'
 import { Link, useNavigate, Navigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { Zap, Eye, EyeOff } from 'lucide-react'
+import { Zap, Eye, EyeOff, Home } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import toast from 'react-hot-toast'
 
 export default function LoginPage() {
   const { user, login, loading } = useAuth()
   const navigate = useNavigate()
-  const [username, setUsername] = useState('')
-  const [password, setPassword] = useState('')
-  const [showPw, setShowPw] = useState(false)
+  const [username, setUsername]   = useState('')
+  const [password, setPassword]   = useState('')
+  const [showPw, setShowPw]       = useState(false)
   const [submitting, setSubmitting] = useState(false)
-  const [errors, setErrors] = useState({})
+  const [errors, setErrors]       = useState({})
 
   if (loading) return null
   if (user) return <Navigate to="/home" replace />
@@ -20,7 +20,7 @@ export default function LoginPage() {
   const validate = () => {
     const errs = {}
     if (!username.trim()) errs.username = 'Username is required'
-    if (!password) errs.password = 'Password is required'
+    if (!password)        errs.password = 'Password is required'
     return errs
   }
 
@@ -29,7 +29,6 @@ export default function LoginPage() {
     const errs = validate()
     if (Object.keys(errs).length > 0) {
       setErrors(errs)
-      // Show the first error as a toast too
       toast.error(Object.values(errs)[0])
       return
     }
@@ -42,7 +41,6 @@ export default function LoginPage() {
     } catch (err) {
       const msg = err.response?.data?.error || 'Incorrect username or password'
       toast.error(msg)
-      // Highlight the password field on auth failure
       setErrors({ password: msg })
     } finally {
       setSubmitting(false)
@@ -54,16 +52,27 @@ export default function LoginPage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-navy via-navy-light to-navy-lighter flex items-center justify-center p-4">
+      {/* Background glows */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
         <div className="absolute top-1/3 -left-20 w-72 h-72 bg-primary/10 rounded-full blur-3xl" />
         <div className="absolute bottom-1/3 -right-20 w-72 h-72 bg-secondary/10 rounded-full blur-3xl" />
       </div>
+
+      {/* Home button — top left */}
+      <Link
+        to="/"
+        className="fixed top-5 left-5 z-20 flex items-center gap-1.5 text-sm text-gray-400 hover:text-white bg-white/5 hover:bg-white/10 border border-white/10 hover:border-white/20 px-3 py-2 rounded-xl transition-all duration-200"
+      >
+        <Home size={15} />
+        Home
+      </Link>
 
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         className="glass-card p-8 w-full max-w-md relative z-10"
       >
+        {/* Logo */}
         <Link to="/" className="flex items-center gap-2 justify-center mb-8">
           <div className="w-9 h-9 bg-gradient-to-br from-primary to-secondary rounded-lg flex items-center justify-center">
             <Zap size={20} className="text-white" />
@@ -74,6 +83,7 @@ export default function LoginPage() {
         <h1 className="text-2xl font-bold text-white text-center mb-6">Welcome Back</h1>
 
         <form onSubmit={handleSubmit} className="space-y-4" noValidate>
+          {/* Username */}
           <div>
             <input
               type="text"
@@ -89,6 +99,7 @@ export default function LoginPage() {
             )}
           </div>
 
+          {/* Password */}
           <div>
             <div className="relative">
               <input
@@ -117,9 +128,10 @@ export default function LoginPage() {
             disabled={submitting}
             className="btn-primary w-full flex items-center justify-center mt-2"
           >
-            {submitting ? (
-              <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-            ) : 'Log In'}
+            {submitting
+              ? <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+              : 'Log In'
+            }
           </button>
         </form>
 
