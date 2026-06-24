@@ -10,6 +10,8 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.Map;
+
 @RestController
 @RequestMapping("/api/auth")
 @RequiredArgsConstructor
@@ -30,5 +32,23 @@ public class AuthController {
     @GetMapping("/me")
     public ResponseEntity<AuthResponse> me(Authentication authentication) {
         return ResponseEntity.ok(authService.getCurrentUser(authentication.getName()));
+    }
+
+    /**
+     * PATCH /api/auth/profile
+     * Updates the logged-in user's profilePic and/or fullName.
+     * Only fields present in the body are changed.
+     */
+    @PatchMapping("/profile")
+    public ResponseEntity<AuthResponse> updateProfile(
+            @RequestBody Map<String, String> body,
+            Authentication authentication) {
+        return ResponseEntity.ok(
+                authService.updateProfile(
+                        authentication.getName(),
+                        body.get("profilePic"),
+                        body.get("fullName")
+                )
+        );
     }
 }

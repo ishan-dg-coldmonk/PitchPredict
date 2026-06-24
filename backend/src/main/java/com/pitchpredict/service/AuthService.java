@@ -40,7 +40,6 @@ public class AuthService {
 
         user = userRepository.save(user);
         String token = tokenProvider.generateToken(user.getUsername());
-
         return toAuthResponse(user, token);
     }
 
@@ -59,6 +58,25 @@ public class AuthService {
     public AuthResponse getCurrentUser(String username) {
         User user = userRepository.findByUsername(username)
                 .orElseThrow(() -> ApiException.notFound("User not found"));
+        // No token returned for /me — frontend already has it
+        return toAuthResponse(user, null);
+    }
+
+    /**
+     * Update profile pic and/or full name for the given user.
+     * Only non-null values in the parameters are applied — passing null
+     * for a field means "leave it unchanged".
+     * Returns a fresh AuthResponse (without token) so the frontend can
+     * update its user state immediately.
+     */
+    public AuthResponse updateProfile(String username, String profilePic, String fullName) {
+        User user = userRepository.findByUsername(username)
+                .orElseThrow(() -> ApiException.notFound("User not found"));
+
+        if (profilePic != null) user.setProfilePic(profilePic);
+        if (fullName   != null) user.setFullName(fullName);
+
+        user = userRepository.save(user);
         return toAuthResponse(user, null);
     }
 

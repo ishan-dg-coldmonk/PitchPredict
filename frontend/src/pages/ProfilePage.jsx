@@ -1,11 +1,15 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { User, Mail, Shield, Trophy, TrendingUp, Users, UserCheck, X, LogIn } from 'lucide-react'
+import {
+  User, Mail, Shield, Trophy, TrendingUp,
+  Users, UserCheck, X, LogIn, Camera, Loader2,
+} from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import Navbar from '../components/Navbar'
 import LeaderboardTable from '../components/LeaderboardTable'
 import { useAuth } from '../context/AuthContext'
 import API from '../api/axios'
+import toast from 'react-hot-toast'
 
 // ── Room Members modal ───────────────────────────────────────────────────────
 function RoomMembersModal({ roomId, roomName, onClose }) {
@@ -13,7 +17,6 @@ function RoomMembersModal({ roomId, roomName, onClose }) {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    // Use the public room members endpoint (same as admin but accessible to room members)
     API.get(`/rooms/${roomId}/members`)
       .then((r) => setMembers(r.data))
       .finally(() => setLoading(false))
@@ -129,11 +132,14 @@ function RoomLeaderboardModal({ roomId, roomName, onClose }) {
 
 // ── Main ProfilePage ─────────────────────────────────────────────────────────
 export default function ProfilePage() {
-  const { user } = useAuth()
-  const navigate  = useNavigate()
+  const { user, updateProfile } = useAuth()
+  const navigate                = useNavigate()
+  const fileRef                 = useRef()
+
   const [rooms, setRooms]                           = useState([])
-  const [showingMembers, setShowingMembers]         = useState(null) // { id, name }
-  const [showingLeaderboard, setShowingLeaderboard] = useState(null) // { id, name }
+  const [showingMembers, setShowingMembers]         = useState(null)
+  const [showingLeaderboard, setShowingLeaderboard] = useState(null)
+  const [uploadingPic, setUploadingPic]             = useState(false)
 
   useEffect(() => {
     API.get('/rooms/my').then((r) => setRooms(r.data))
@@ -141,9 +147,36 @@ export default function ProfilePage() {
 
   if (!user) return null
 
+  // ── Profile pic upload ───────────────────────────────────────────────────
+  const handlePicChange = async (e) => {
+    const file = e.target.files[0]
+    if (!file) return
+
+    if (file.size > 3 * 1024 * 1024) {
+      toast.error('Image must be under 3 MB')
+      return
+    }
+
+    // Convert to base64
+    const reader = new FileReader()
+    reader.onload = async () => {
+      const base64 = reader.result // data:image/...;base64,...
+      setUploadingPic(true)
+      try {
+        await updateProfile({ profilePic: base64 })
+        toast.success('Profile picture updated!')
+      } catch (err) {
+        toast.error(err.response?.data?.error || 'Failed to update picture')
+      } finally {
+        setUploadingPic(false)
+      }
+    }
+    reader.readAsDataURL(file)
+  }
+
   const stats = [
-    { icon: Trophy,      label: 'Rooms Joined', value: rooms.length },
-    { icon: TrendingUp,  label: 'Active',        value: rooms.filter((r) => r.userJoined).length },
+    { icon: Trophy,     label: 'Rooms Joined', value: rooms.length },
+    { icon: TrendingUp, label: 'Active',        value: rooms.filter((r) => r.userJoined).length },
   ]
 
   return (
@@ -154,23 +187,56 @@ export default function ProfilePage() {
         {/* ── Profile card ─────────────────────────────────────────────── */}
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="glass-card p-8 mb-8">
           <div className="flex flex-col sm:flex-row items-center gap-6">
-            <div className="w-24 h-24 rounded-2xl bg-gradient-to-br from-primary/30 to-secondary/30 flex items-center justify-center overflow-hidden ring-4 ring-primary/20">
-              {user.profilePic
-                ? <img src={user.profilePic} alt="" className="w-full h-full object-cover" />
-                : <User size={40} className="text-gray-400" />
-              }
+
+            {/* Avatar with edit button */}
+            <div className="relative flex-shrink-0">
+              <div className="w-24 h-24 rounded-2xl bg-gradient-to-br from-primary/30 to-secondary/30 flex items-center justify-center overflow-hidden ring-4 ring-primary/20">
+                {uploadingPic ? (
+                  <Loader2 size={32} className="text-primary animate-spin" />
+                ) : user.profilePic ? (
+                  <img src={user.profilePic} alt="" className="w-full h-full object-cover" />
+                ) : (
+                  <User size={40} className="text-gray-400" />
+                )}
+              </div>
+
+              {/* Camera overlay button */}
+              <button
+                onClick={() => fileRef.current?.click()}
+                disabled={uploadingPic}
+                className="absolute -bottom-2 -right-2 w-8 h-8 bg-primary hover:bg-primary-light rounded-xl flex items-center justify-center shadow-lg shadow-primary/30 transition-all duration-200 hover:scale-110 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <Camera size={14} className="text-white" />
+              </button>
+
+              <input
+                ref={fileRef}
+                type="file"
+                accept="image/*"
+                onChange={handlePicChange}
+                className="hidden"
+              />
             </div>
+
+            {/* User info */}
             <div className="text-center sm:text-left">
               <h1 className="text-2xl font-bold text-white">{user.fullName || user.username}</h1>
-              <p className="text-gray-400">@{user.username}</p>
+              <p className="text-gray-400 mt-0.5">@{user.username}</p>
               <div className="flex items-center gap-4 mt-2 text-sm text-gray-500 justify-center sm:justify-start flex-wrap">
-                <span className="flex items-center gap-1"><Mail size={14} />{user.email}</span>
-                <span className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${
-                  user.role === 'ADMIN' ? 'bg-primary/20 text-primary-light' : 'bg-white/10 text-gray-400'
+                <span className="flex items-center gap-1.5">
+                  <Mail size={14} /> {user.email}
+                </span>
+                <span className={`flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium ${
+                  user.role === 'ADMIN'
+                    ? 'bg-primary/20 text-primary-light'
+                    : 'bg-white/10 text-gray-400'
                 }`}>
-                  <Shield size={12} />{user.role}
+                  <Shield size={12} /> {user.role}
                 </span>
               </div>
+              <p className="text-xs text-gray-600 mt-2">
+                Tap the camera icon to change your profile picture
+              </p>
             </div>
           </div>
         </motion.div>
@@ -218,7 +284,9 @@ export default function ProfilePage() {
                     <div className="flex items-center gap-1.5 text-xs text-gray-500 mt-1">
                       <Users size={12} />
                       {room.memberCount} {room.memberCount === 1 ? 'member' : 'members'}
-                      {room.maxMembers && <span className="text-gray-600">/ {room.maxMembers} max</span>}
+                      {room.maxMembers && (
+                        <span className="text-gray-600">/ {room.maxMembers} max</span>
+                      )}
                     </div>
                   </div>
 
