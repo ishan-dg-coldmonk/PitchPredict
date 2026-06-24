@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { useParams } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Users, Eye, X, CalendarDays, CheckCircle2 } from 'lucide-react'
@@ -26,9 +26,8 @@ const fade = {
   exit:    { opacity: 0, transition: { duration: 0.1 } },
 }
 
-// ── helpers ──────────────────────────────────────────────────────────────────
+// ── match helpers ────────────────────────────────────────────────────────────
 
-/** Featured: first LIVE → first scheduled → nothing */
 function pickFeatured(matches) {
   const now  = new Date()
   const live = matches.filter((m) => m.status === 'LIVE')
@@ -40,7 +39,6 @@ function pickFeatured(matches) {
   return any[0] ?? null
 }
 
-/** Group an array of matches by EST day key, returning sorted [dayKey, matches[]] pairs */
 function groupByESTDay(matches) {
   const map = new Map()
   for (const m of matches) {
@@ -148,6 +146,10 @@ export default function RoomDetailPage() {
   const [viewAllMatch, setViewAllMatch]   = useState(null)
   const [loading, setLoading]             = useState(true)
 
+  // Track whether the initial load is done so the polling refresh
+  // doesn't trigger the full-page spinner
+  const initialLoadDone = useRef(false)
+
   // ── derived ──────────────────────────────────────────────────────────────
   const featuredMatch = useMemo(() => pickFeatured(matches), [matches])
 
@@ -162,7 +164,9 @@ export default function RoomDetailPage() {
   )
   const todayMatches = useMemo(() => {
     const key = todayESTKey()
-    return upcomingMatches.filter((m) => getESTDayKey(m.matchDate) === key && m.status === 'SCHEDULED')
+    return upcomingMatches.filter(
+      (m) => getESTDayKey(m.matchDate) === key && m.status === 'SCHEDULED'
+    )
   }, [upcomingMatches])
 
   const groupedUpcoming = useMemo(() => groupByESTDay(upcomingMatches), [upcomingMatches])
@@ -172,8 +176,8 @@ export default function RoomDetailPage() {
   const finishedCount = finishedMatches.length
   const upcomingCount = upcomingMatches.filter((m) => m.status === 'SCHEDULED').length
 
-  // ── data ─────────────────────────────────────────────────────────────────
-  const loadData = useCallback(async () => {
+  // ── data fetching ─────────────────────────────────────────────────────────
+  const loadData = useCallback(async (isPolling = false) => {
     try {
       const [roomRes, lbRes] = await Promise.all([
         API.get(`/rooms/${roomId}`),
@@ -192,28 +196,67 @@ export default function RoomDetailPage() {
         predRes.data.forEach((p) => { map[p.matchId] = p })
         setPredictions(map)
       }
+    } catch (err) {
+      // On polling errors just log — don't disrupt the UI
+      if (isPolling) {
+        console.warn('Live poll failed silently:', err)
+      }
     } finally {
-      setLoading(false)
+      if (!initialLoadDone.current) {
+        setLoading(false)
+        initialLoadDone.current = true
+      }
     }
   }, [roomId])
 
-  useEffect(() => { loadData() }, [loadData])
+  // Initial load
+  useEffect(() => { loadData(false) }, [loadData])
 
-  // ── Whether to show "Predictions" eye button ─────────────────────────────
+  // ── Live polling — 30s interval, only runs when matches are LIVE ──────────
   //
-  // Show for:
-  //   - FINISHED matches (always — let everyone compare)
-  //   - LIVE matches (always — prediction window is already closed)
-  //   - SCHEDULED matches whose window is closed AND current user has predicted
+  // We check `liveCount` from the derived state. When it's > 0, a 30-second
+  // interval is set up. When it drops back to 0 (all finished), the interval
+  // is cleared. The effect re-runs whenever liveCount changes so it correctly
+  // starts/stops as matches go live and finish.
   //
+  // We also poll when there are matches in the pre-kickoff window (within
+  // 10 minutes of kickoff) so the UI flips to LIVE as soon as the backend
+  // detects it, without the user having to refresh.
+
+  useEffect(() => {
+    if (!initialLoadDone.current && loading) return
+
+    const now = new Date()
+
+    const hasLive = liveCount > 0
+
+    // Any match starting within the next 10 minutes (show score as soon as live)
+    const hasImminent = matches.some((m) => {
+      if (m.status !== 'SCHEDULED') return false
+      const diff = new Date(m.matchDate) - now
+      return diff > 0 && diff <= 10 * 60 * 1000
+    })
+
+    if (!hasLive && !hasImminent) return
+
+    const interval = setInterval(() => {
+      loadData(true)
+    }, 30_000)
+
+    return () => clearInterval(interval)
+  }, [liveCount, matches, loading, loadData])
+
+  // ── Predictions eye-button visibility ─────────────────────────────────────
+  //
+  // Show for FINISHED (always) and LIVE (prediction window already closed).
+  // For SCHEDULED with closed window, show only if the current user predicted.
   const canViewPredictions = (match) => {
     if (match.status === 'FINISHED') return true
-    if (match.status === 'LIVE')     return true   // ← live matches now viewable
-    // Closed window on a scheduled match — only show if user has predicted
+    if (match.status === 'LIVE')     return true
     return !match.predictionOpen && !!predictions[match.id]
   }
 
-  // ── render a single match card ───────────────────────────────────────────
+  // ── Match card renderer ───────────────────────────────────────────────────
   const renderMatchCard = (match, i) => {
     const pred        = predictions[match.id]
     const isFeatured  = featuredMatch?.id === match.id
@@ -231,7 +274,6 @@ export default function RoomDetailPage() {
         className={isFeatured ? 'ring-1 ring-primary/30 rounded-xl' : ''}
       >
         <MatchCard match={match} onClick={() => setSelectedMatch(match)}>
-          {/* Predictions eye button */}
           {showViewAll && (
             <button
               onClick={(e) => { e.stopPropagation(); setViewAllMatch(match) }}
@@ -241,7 +283,6 @@ export default function RoomDetailPage() {
             </button>
           )}
 
-          {/* User's own prediction chip */}
           {pred && (
             <span className="text-[11px] font-bold tabular-nums bg-accent/10 text-accent border border-accent/20 px-2.5 py-0.5 rounded">
               {pred.predictedHomeScore}:{pred.predictedAwayScore}
@@ -249,7 +290,6 @@ export default function RoomDetailPage() {
             </span>
           )}
 
-          {/* Status labels when no prediction */}
           {!pred && isFinished && (
             <span className="text-[10px] font-semibold text-gray-500 bg-white/5 px-2 py-0.5 rounded">
               Ended
@@ -283,6 +323,7 @@ export default function RoomDetailPage() {
   }
   if (!room) return null
 
+  // ── render ────────────────────────────────────────────────────────────────
   return (
     <div className="min-h-screen bg-[#0a0a12]">
       <Navbar />
@@ -300,6 +341,11 @@ export default function RoomDetailPage() {
               <span className="flex items-center gap-1.5 text-xs font-semibold text-red-400 bg-red-500/10 border border-red-500/15 px-2.5 py-1 rounded-full">
                 <span className="w-1.5 h-1.5 bg-red-500 rounded-full animate-live-blink" />
                 {liveCount} Live
+              </span>
+            )}
+            {liveCount > 0 && (
+              <span className="text-[10px] text-gray-600 animate-pulse">
+                auto-refreshing every 30s
               </span>
             )}
             <span className="text-xs text-gray-500">
@@ -327,7 +373,7 @@ export default function RoomDetailPage() {
 
         <AnimatePresence mode="wait">
 
-          {/* ════════════════════ MATCHES TAB ════════════════════ */}
+          {/* ════════════ MATCHES TAB ════════════ */}
           {mainTab === 'matches' && (
             <motion.div key="matches" {...fade}>
               {matches.length === 0 ? (
@@ -426,7 +472,7 @@ export default function RoomDetailPage() {
                     </div>
                   )}
 
-                  {/* Sub-tabs: Upcoming / Finished */}
+                  {/* Sub-tabs */}
                   <div className="flex items-center gap-1 mb-6 bg-white/[0.025] p-1 rounded-xl w-fit">
                     <button
                       onClick={() => setMatchTab('upcoming')}
@@ -516,12 +562,13 @@ export default function RoomDetailPage() {
             </motion.div>
           )}
 
-          {/* ════════════════════ LEADERBOARD TAB ════════════════════ */}
+          {/* ════════════ LEADERBOARD TAB ════════════ */}
           {mainTab === 'leaderboard' && (
             <motion.div key="leaderboard" {...fade}>
               <LeaderboardTable entries={leaderboard} />
             </motion.div>
           )}
+
         </AnimatePresence>
       </div>
 
@@ -535,7 +582,7 @@ export default function RoomDetailPage() {
             eventId={room.eventId}
             existing={predictions[selectedMatch.id]}
             onClose={() => setSelectedMatch(null)}
-            onSaved={loadData}
+            onSaved={() => loadData(false)}
           />
         )}
       </AnimatePresence>
