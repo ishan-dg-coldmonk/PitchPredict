@@ -9,6 +9,7 @@ import LeaderboardTable from '../components/LeaderboardTable'
 import PredictionModal from '../components/PredictionModal'
 import LiveIndicator from '../components/LiveIndicator'
 import { useAuth } from '../context/AuthContext'
+import { useWebSocket } from '../context/WebSocketContext'
 import { getESTDayKey, getDayLabelEST, formatTimeIST, todayESTKey } from '../utils/helpers'
 import API from '../api/axios'
 
@@ -26,13 +27,10 @@ const fade = {
   exit:    { opacity: 0, transition: { duration: 0.1 } },
 }
 
-// ── match helpers ────────────────────────────────────────────────────────────
-
 function pickFeatured(matches) {
   const now  = new Date()
   const live = matches.filter((m) => m.status === 'LIVE')
   if (live.length) return live[0]
-
   const any = matches
     .filter((m) => m.status === 'SCHEDULED' && new Date(m.matchDate) > now)
     .sort((a, b) => new Date(a.matchDate) - new Date(b.matchDate))
@@ -133,10 +131,12 @@ function AllPredictionsModal({ match, roomId, onClose }) {
 
 // ── Main page ────────────────────────────────────────────────────────────────
 export default function RoomDetailPage() {
-  const { roomId } = useParams()
-  const { user }   = useAuth()
+  const { roomId }            = useParams()
+  const { user }              = useAuth()
+  const { subscribe }         = useWebSocket()
 
   const [room, setRoom]               = useState(null)
+  const [event, setEvent]             = useState(null)
   const [matches, setMatches]         = useState([])
   const [leaderboard, setLeaderboard] = useState([])
   const [predictions, setPredictions] = useState({})
@@ -146,13 +146,12 @@ export default function RoomDetailPage() {
   const [viewAllMatch, setViewAllMatch]   = useState(null)
   const [loading, setLoading]             = useState(true)
 
-  // Track whether the initial load is done so the polling refresh
-  // doesn't trigger the full-page spinner
   const initialLoadDone = useRef(false)
+  // Keep eventId in a ref so WebSocket effect can read it without re-subscribing
+  const eventIdRef = useRef(null)
 
   // ── derived ──────────────────────────────────────────────────────────────
-  const featuredMatch = useMemo(() => pickFeatured(matches), [matches])
-
+  const featuredMatch   = useMemo(() => pickFeatured(matches), [matches])
   const upcomingMatches = useMemo(
     () => matches.filter((m) => m.status !== 'FINISHED' && m.status !== 'CANCELLED' && m.status !== 'POSTPONED'),
     [matches]
@@ -171,13 +170,12 @@ export default function RoomDetailPage() {
 
   const groupedUpcoming = useMemo(() => groupByESTDay(upcomingMatches), [upcomingMatches])
   const groupedFinished = useMemo(() => groupByESTDay(finishedMatches), [finishedMatches])
+  const liveCount       = useMemo(() => matches.filter((m) => m.status === 'LIVE').length, [matches])
+  const finishedCount   = finishedMatches.length
+  const upcomingCount   = upcomingMatches.filter((m) => m.status === 'SCHEDULED').length
 
-  const liveCount     = useMemo(() => matches.filter((m) => m.status === 'LIVE').length, [matches])
-  const finishedCount = finishedMatches.length
-  const upcomingCount = upcomingMatches.filter((m) => m.status === 'SCHEDULED').length
-
-  // ── data fetching ─────────────────────────────────────────────────────────
-  const loadData = useCallback(async (isPolling = false) => {
+  // ── Initial REST load ─────────────────────────────────────────────────────
+  const loadData = useCallback(async () => {
     try {
       const [roomRes, lbRes] = await Promise.all([
         API.get(`/rooms/${roomId}`),
@@ -187,20 +185,21 @@ export default function RoomDetailPage() {
       setLeaderboard(lbRes.data)
 
       if (roomRes.data.eventId) {
-        const [matchRes, predRes] = await Promise.all([
+        eventIdRef.current = roomRes.data.eventId
+
+        const [matchRes, predRes, eventRes] = await Promise.all([
           API.get(`/events/${roomRes.data.eventId}/matches`),
           API.get(`/predictions/room/${roomId}/event/${roomRes.data.eventId}`),
+          API.get(`/events/${roomRes.data.eventId}`),
         ])
         setMatches(matchRes.data)
+        setEvent(eventRes.data)
         const map = {}
         predRes.data.forEach((p) => { map[p.matchId] = p })
         setPredictions(map)
       }
     } catch (err) {
-      // On polling errors just log — don't disrupt the UI
-      if (isPolling) {
-        console.warn('Live poll failed silently:', err)
-      }
+      console.error('Failed to load room data:', err)
     } finally {
       if (!initialLoadDone.current) {
         setLoading(false)
@@ -209,50 +208,68 @@ export default function RoomDetailPage() {
     }
   }, [roomId])
 
-  // Initial load
-  useEffect(() => { loadData(false) }, [loadData])
+  useEffect(() => { loadData() }, [loadData])
 
-  // ── Live polling — 30s interval, only runs when matches are LIVE ──────────
+  // ── WebSocket subscriptions ───────────────────────────────────────────────
   //
-  // We check `liveCount` from the derived state. When it's > 0, a 30-second
-  // interval is set up. When it drops back to 0 (all finished), the interval
-  // is cleared. The effect re-runs whenever liveCount changes so it correctly
-  // starts/stops as matches go live and finish.
+  // Subscribe once after initial load. We subscribe to:
+  //   /topic/matches/{eventId}      → match status/score changes
+  //   /topic/leaderboard/{roomId}   → leaderboard recalculations
   //
-  // We also poll when there are matches in the pre-kickoff window (within
-  // 10 minutes of kickoff) so the UI flips to LIVE as soon as the backend
-  // detects it, without the user having to refresh.
+  // Each WebSocket event carries a `type` and `payload`.
+  // For match events: update the single match in-place in the array.
+  // For leaderboard events: replace the leaderboard state entirely.
+  // No full REST refetch needed — the payload IS the updated data.
 
   useEffect(() => {
-    if (!initialLoadDone.current && loading) return
+    if (!initialLoadDone.current) return
+    if (!eventIdRef.current) return
 
-    const now = new Date()
+    const eventId = eventIdRef.current
 
-    const hasLive = liveCount > 0
+    // ── Match updates ───────────────────────────────────────────────────────
+    const unsubMatches = subscribe(
+      `/topic/matches/${eventId}`,
+      (event) => {
+        // event = { type: 'MATCH_UPDATED' | 'MATCH_LIVE' | 'MATCH_FINISHED', payload: MatchDTO }
+        const updatedMatch = event.payload
 
-    // Any match starting within the next 10 minutes (show score as soon as live)
-    const hasImminent = matches.some((m) => {
-      if (m.status !== 'SCHEDULED') return false
-      const diff = new Date(m.matchDate) - now
-      return diff > 0 && diff <= 10 * 60 * 1000
-    })
+        setMatches((prev) =>
+          prev.map((m) => (m.id === updatedMatch.id ? updatedMatch : m))
+        )
 
-    if (!hasLive && !hasImminent) return
+        // If the currently-open prediction modal is for this match, update it
+        setSelectedMatch((prev) =>
+          prev?.id === updatedMatch.id ? updatedMatch : prev
+        )
 
-    const interval = setInterval(() => {
-      loadData(true)
-    }, 30_000)
+        // If the currently-open view-all modal is for this match, update it
+        setViewAllMatch((prev) =>
+          prev?.id === updatedMatch.id ? updatedMatch : prev
+        )
+      }
+    )
 
-    return () => clearInterval(interval)
-  }, [liveCount, matches, loading, loadData])
+    // ── Leaderboard updates ─────────────────────────────────────────────────
+    const unsubLeaderboard = subscribe(
+      `/topic/leaderboard/${roomId}`,
+      (event) => {
+        // event = { type: 'LEADERBOARD_UPDATED', payload: LeaderboardEntry[] }
+        setLeaderboard(event.payload)
+      }
+    )
 
-  // ── Predictions eye-button visibility ─────────────────────────────────────
-  //
-  // Show for FINISHED (always) and LIVE (prediction window already closed).
-  // For SCHEDULED with closed window, show only if the current user predicted.
+    return () => {
+      unsubMatches()
+      unsubLeaderboard()
+    }
+  }, [loading, subscribe, roomId]) // re-run only after initial load completes
+
+  // ── Prediction view eligibility ───────────────────────────────────────────
   const canViewPredictions = (match) => {
     if (match.status === 'FINISHED') return true
     if (match.status === 'LIVE')     return true
+    // predictionOpen is dynamically computed in MatchService.toDTO()
     return !match.predictionOpen && !!predictions[match.id]
   }
 
@@ -291,26 +308,20 @@ export default function RoomDetailPage() {
           )}
 
           {!pred && isFinished && (
-            <span className="text-[10px] font-semibold text-gray-500 bg-white/5 px-2 py-0.5 rounded">
-              Ended
-            </span>
+            <span className="text-[10px] font-semibold text-gray-500 bg-white/5 px-2 py-0.5 rounded">Ended</span>
           )}
           {!pred && isLive && (
-            <span className="text-[10px] font-semibold text-red-400 bg-red-500/10 px-2 py-0.5 rounded">
-              In Play
-            </span>
+            <span className="text-[10px] font-semibold text-red-400 bg-red-500/10 px-2 py-0.5 rounded">In Play</span>
           )}
           {!pred && !isFinished && !isLive && !match.predictionOpen && (
-            <span className="text-[10px] font-semibold text-gray-500 bg-white/5 px-2 py-0.5 rounded">
-              Closed
-            </span>
+            <span className="text-[10px] font-semibold text-gray-500 bg-white/5 px-2 py-0.5 rounded">Closed</span>
           )}
         </MatchCard>
       </motion.div>
     )
   }
 
-  // ── loading ───────────────────────────────────────────────────────────────
+  // ── Loading ───────────────────────────────────────────────────────────────
   if (loading) {
     return (
       <div className="min-h-screen bg-[#0a0a12]">
@@ -323,17 +334,19 @@ export default function RoomDetailPage() {
   }
   if (!room) return null
 
-  // ── render ────────────────────────────────────────────────────────────────
+  // ── Render ────────────────────────────────────────────────────────────────
   return (
     <div className="min-h-screen bg-[#0a0a12]">
       <Navbar />
-      <div className="pt-20 pb-16 max-w-4xl mx-auto px-5">
+      <div className="pt-20 pb-16 max-w-4xl mx-auto px-3 sm:px-5">
 
-        {/* ── Header ──────────────────────────────────────────────────── */}
-        <motion.div {...fade} className="mb-10">
+        {/* Header */}
+        <motion.div {...fade} className="mb-6 sm:mb-10 pt-2 sm:pt-0">
           <p className="text-[11px] uppercase tracking-[0.2em] text-gray-500 mb-1">Event Room</p>
-          <h1 className="text-3xl font-extrabold text-white tracking-tight mb-4">{room.name}</h1>
-          <div className="flex flex-wrap items-center gap-3">
+          <h1 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight mb-3 sm:mb-4 leading-tight">
+            {room.name}
+          </h1>
+          <div className="flex flex-wrap items-center gap-2 sm:gap-3">
             <span className="flex items-center gap-1.5 text-sm text-gray-400">
               <Users size={14} className="text-gray-500" /> {room.memberCount} members
             </span>
@@ -343,24 +356,20 @@ export default function RoomDetailPage() {
                 {liveCount} Live
               </span>
             )}
-            {liveCount > 0 && (
-              <span className="text-[10px] text-gray-600 animate-pulse">
-                auto-refreshing every 30s
-              </span>
-            )}
+            {/* No polling indicator — WebSocket handles updates silently */}
             <span className="text-xs text-gray-500">
               {finishedCount} played · {upcomingCount} upcoming
             </span>
           </div>
         </motion.div>
 
-        {/* ── Main tabs ───────────────────────────────────────────────── */}
-        <div className="flex flex-wrap gap-1 mb-8 bg-white/[0.03] p-1 rounded-xl w-fit">
+        {/* Main tabs */}
+        <div className="flex flex-wrap gap-1 mb-6 sm:mb-8 bg-white/[0.03] p-1 rounded-xl w-fit">
           {['matches', 'leaderboard'].map((t) => (
             <button
               key={t}
               onClick={() => setMainTab(t)}
-              className={`text-sm font-semibold capitalize px-5 py-2 rounded-lg transition-all duration-200 ${
+              className={`text-sm font-semibold capitalize px-4 sm:px-5 py-2 rounded-lg transition-all duration-200 ${
                 mainTab === t
                   ? 'text-white bg-primary/20 shadow-sm'
                   : 'text-gray-500 hover:text-gray-300 hover:bg-white/[0.03]'
@@ -373,16 +382,16 @@ export default function RoomDetailPage() {
 
         <AnimatePresence mode="wait">
 
-          {/* ════════════ MATCHES TAB ════════════ */}
+          {/* ════════ MATCHES TAB ════════ */}
           {mainTab === 'matches' && (
             <motion.div key="matches" {...fade}>
               {matches.length === 0 ? (
                 <div className="py-16 text-center text-gray-500 text-sm">No matches scheduled yet</div>
               ) : (
                 <>
-                  {/* Featured match */}
+                  {/* Featured */}
                   {featuredMatch && (
-                    <div className="mb-8">
+                    <div className="mb-6 sm:mb-8">
                       <div className="flex items-center gap-2 mb-3">
                         {featuredMatch.status === 'LIVE'
                           ? <LiveIndicator />
@@ -397,7 +406,7 @@ export default function RoomDetailPage() {
                         onClick={() => setSelectedMatch(featuredMatch)}
                       />
                       {predictions[featuredMatch.id] && (
-                        <div className="mt-2 flex items-center gap-2 px-1">
+                        <div className="mt-2 flex flex-wrap items-center gap-2 px-1">
                           <span className="text-xs text-gray-500">Your pick:</span>
                           <span className="text-xs font-bold text-accent">
                             {predictions[featuredMatch.id].predictedHomeScore}
@@ -419,15 +428,15 @@ export default function RoomDetailPage() {
 
                   {/* Today's strip */}
                   {todayMatches.length > 0 && (
-                    <div className="mb-8">
-                      <div className="flex items-center gap-2 mb-4">
+                    <div className="mb-6 sm:mb-8">
+                      <div className="flex items-center gap-2 mb-3">
                         <CalendarDays size={14} className="text-accent" />
                         <span className="text-xs font-bold uppercase tracking-[0.15em] text-accent/80">
                           Today's Matches
                         </span>
-                        <span className="text-[10px] text-gray-600 ml-1">(times in IST)</span>
+                        <span className="text-[10px] text-gray-600 ml-1">(IST)</span>
                       </div>
-                      <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-hide">
+                      <div className="flex gap-3 overflow-x-auto pb-4 mt-1 scrollbar-hide">
                         {todayMatches.map((match) => {
                           const pred       = predictions[match.id]
                           const isFeatured = featuredMatch?.id === match.id
@@ -437,7 +446,8 @@ export default function RoomDetailPage() {
                               whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}
                               onClick={() => setSelectedMatch(match)}
                               className={`
-                                flex-shrink-0 cursor-pointer rounded-2xl border p-4 min-w-[190px] max-w-[210px]
+                                flex-shrink-0 cursor-pointer rounded-2xl border p-3 sm:p-4
+                                min-w-[165px] sm:min-w-[190px] max-w-[200px] sm:max-w-[210px]
                                 transition-all duration-200
                                 ${isFeatured
                                   ? 'border-primary/40 bg-primary/10'
@@ -448,12 +458,12 @@ export default function RoomDetailPage() {
                               <div className="text-[10px] text-gray-500 mb-2 font-semibold uppercase tracking-wider">
                                 {formatTimeIST(match.matchDate)} IST
                               </div>
-                              <div className="flex items-center gap-2 mb-1">
-                                {match.homeCrest && <img src={match.homeCrest} alt="" className="w-5 h-5 object-contain flex-shrink-0" />}
+                              <div className="flex items-center gap-1.5 mb-1">
+                                {match.homeCrest && <img src={match.homeCrest} alt="" className="w-4 h-4 sm:w-5 sm:h-5 object-contain flex-shrink-0" />}
                                 <span className="text-xs font-semibold text-white truncate">{match.homeTeam}</span>
                               </div>
-                              <div className="flex items-center gap-2">
-                                {match.awayCrest && <img src={match.awayCrest} alt="" className="w-5 h-5 object-contain flex-shrink-0" />}
+                              <div className="flex items-center gap-1.5">
+                                {match.awayCrest && <img src={match.awayCrest} alt="" className="w-4 h-4 sm:w-5 sm:h-5 object-contain flex-shrink-0" />}
                                 <span className="text-xs font-semibold text-white truncate">{match.awayTeam}</span>
                               </div>
                               {pred ? (
@@ -473,31 +483,31 @@ export default function RoomDetailPage() {
                   )}
 
                   {/* Sub-tabs */}
-                  <div className="flex items-center flex-wrap gap-1 mb-6 bg-white/[0.025] p-1 rounded-xl w-fit">
+                  <div className="flex items-center flex-wrap gap-1 mb-4 sm:mb-6 bg-white/[0.025] p-1 rounded-xl w-fit">
                     <button
                       onClick={() => setMatchTab('upcoming')}
-                      className={`flex items-center gap-1.5 text-xs font-semibold px-4 py-2 rounded-lg transition-all ${
+                      className={`flex items-center gap-1.5 text-xs font-semibold px-3 sm:px-4 py-2 rounded-lg transition-all ${
                         matchTab === 'upcoming' ? 'text-white bg-white/10' : 'text-gray-500 hover:text-gray-300'
                       }`}
                     >
                       {liveCount > 0 && <LiveIndicator />}
-                      Upcoming & Live
+                      <span className="hidden sm:inline">Upcoming & </span>Live
                       {upcomingMatches.length > 0 && (
-                        <span className="ml-1 text-[10px] bg-white/10 text-gray-400 rounded-full px-1.5 py-0.5">
+                        <span className="text-[10px] bg-white/10 text-gray-400 rounded-full px-1.5 py-0.5">
                           {upcomingMatches.length}
                         </span>
                       )}
                     </button>
                     <button
                       onClick={() => setMatchTab('finished')}
-                      className={`flex items-center gap-1.5 text-xs font-semibold px-4 py-2 rounded-lg transition-all ${
+                      className={`flex items-center gap-1.5 text-xs font-semibold px-3 sm:px-4 py-2 rounded-lg transition-all ${
                         matchTab === 'finished' ? 'text-white bg-white/10' : 'text-gray-500 hover:text-gray-300'
                       }`}
                     >
                       <CheckCircle2 size={12} />
                       Finished
                       {finishedCount > 0 && (
-                        <span className="ml-1 text-[10px] bg-white/10 text-gray-400 rounded-full px-1.5 py-0.5">
+                        <span className="text-[10px] bg-white/10 text-gray-400 rounded-full px-1.5 py-0.5">
                           {finishedCount}
                         </span>
                       )}
@@ -505,9 +515,8 @@ export default function RoomDetailPage() {
                   </div>
 
                   <AnimatePresence mode="wait">
-                    {/* Upcoming tab */}
                     {matchTab === 'upcoming' && (
-                      <motion.div key="upcoming" {...fade} className="space-y-8">
+                      <motion.div key="upcoming" {...fade} className="space-y-6 sm:space-y-8">
                         {upcomingMatches.length === 0 ? (
                           <div className="py-10 text-center text-gray-500 text-sm">No upcoming matches</div>
                         ) : (
@@ -516,14 +525,14 @@ export default function RoomDetailPage() {
                             const isToday = dayKey === todayESTKey()
                             return (
                               <div key={dayKey}>
-                                <div className="flex items-center gap-3 mb-4">
+                                <div className="flex items-center gap-3 mb-3 sm:mb-4">
                                   <div className={`flex-1 h-px bg-gradient-to-r ${isToday ? 'from-accent/40' : 'from-white/10'} to-transparent`} />
                                   <span className={`text-[11px] font-bold uppercase tracking-[0.15em] ${isToday ? 'text-accent/70' : 'text-gray-500'}`}>
                                     {label}
                                   </span>
                                   <div className={`flex-1 h-px bg-gradient-to-l ${isToday ? 'from-accent/40' : 'from-white/10'} to-transparent`} />
                                 </div>
-                                <div className="space-y-3">
+                                <div className="space-y-2 sm:space-y-3">
                                   {dayMatches.map((m, i) => renderMatchCard(m, i))}
                                 </div>
                               </div>
@@ -533,22 +542,21 @@ export default function RoomDetailPage() {
                       </motion.div>
                     )}
 
-                    {/* Finished tab */}
                     {matchTab === 'finished' && (
-                      <motion.div key="finished" {...fade} className="space-y-8">
+                      <motion.div key="finished" {...fade} className="space-y-6 sm:space-y-8">
                         {finishedMatches.length === 0 ? (
                           <div className="py-10 text-center text-gray-500 text-sm">No finished matches yet</div>
                         ) : (
                           groupedFinished.map(([dayKey, dayMatches]) => (
                             <div key={dayKey}>
-                              <div className="flex items-center gap-3 mb-4">
+                              <div className="flex items-center gap-3 mb-3 sm:mb-4">
                                 <div className="flex-1 h-px bg-gradient-to-r from-white/10 to-transparent" />
                                 <span className="text-[11px] font-bold uppercase tracking-[0.15em] text-gray-500">
                                   {getDayLabelEST(dayMatches[0].matchDate)}
                                 </span>
                                 <div className="flex-1 h-px bg-gradient-to-l from-white/10 to-transparent" />
                               </div>
-                              <div className="space-y-3">
+                              <div className="space-y-2 sm:space-y-3">
                                 {dayMatches.map((m, i) => renderMatchCard(m, i))}
                               </div>
                             </div>
@@ -562,10 +570,16 @@ export default function RoomDetailPage() {
             </motion.div>
           )}
 
-          {/* ════════════ LEADERBOARD TAB ════════════ */}
+          {/* ════════ LEADERBOARD TAB ════════ */}
           {mainTab === 'leaderboard' && (
             <motion.div key="leaderboard" {...fade}>
-              <LeaderboardTable entries={leaderboard} />
+              <LeaderboardTable
+                entries={leaderboard}
+                eventStatus={event?.status}
+                eventTitle={event?.title}
+                roomName={room?.name}
+                prize={event?.prize}
+              />
             </motion.div>
           )}
 
@@ -582,7 +596,7 @@ export default function RoomDetailPage() {
             eventId={room.eventId}
             existing={predictions[selectedMatch.id]}
             onClose={() => setSelectedMatch(null)}
-            onSaved={() => loadData(false)}
+            onSaved={loadData}
           />
         )}
       </AnimatePresence>
