@@ -1,5 +1,6 @@
 package com.pitchpredict.dto;
 
+import com.fasterxml.jackson.annotation.JsonFormat;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -21,6 +22,8 @@ public class MatchDTO {
     private String awayCrest;
     private Integer homeScore;
     private Integer awayScore;
+
+    @JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss'Z'", timezone = "UTC")
     private LocalDateTime matchDate;
     private String stage;
     private String groupName;

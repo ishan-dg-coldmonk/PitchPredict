@@ -1,28 +1,13 @@
-import { createContext, useContext, useRef, useCallback } from 'react'
+import { createContext, useContext, useRef, useCallback, useEffect } from 'react'
 import { Client } from '@stomp/stompjs'
 import SockJS from 'sockjs-client'
 
 const WebSocketContext = createContext(null)
 
-/**
- * WebSocketProvider
- *
- * Manages the single STOMP client for the entire app.
- * Provides connect(), disconnect(), and subscribe() to consumers.
- *
- * Usage:
- *   const { subscribe } = useWebSocket()
- *
- *   useEffect(() => {
- *     const unsub = subscribe('/topic/matches/42', (event) => {
- *       // event = { type: 'MATCH_UPDATED', payload: matchDTO }
- *       handleUpdate(event)
- *     })
- *     return unsub   // call on unmount to unsubscribe
- *   }, [subscribe])
- */
 export function WebSocketProvider({ children }) {
   const clientRef = useRef(null)
+  const subscriptionsRef = useRef(new Map())
+  const subIdRef = useRef(0)
 
   /**
    * connect — called once after successful login/signup.
@@ -35,21 +20,34 @@ export function WebSocketProvider({ children }) {
     if (!token) return
 
     const client = new Client({
-      // SockJS as the transport factory — falls back gracefully if native ws
-      // is blocked (common in corporate networks and some browser envs)
-      webSocketFactory: () => new SockJS('/ws'),
+      webSocketFactory: () => {
+        const base = import.meta.env.VITE_API_BASE_URL || ''
+        return new SockJS(base + '/ws')
+      },
 
-      // Pass JWT in STOMP CONNECT frame headers so the backend can
-      // authenticate the WS session (currently /ws is open, but this
-      // future-proofs it for per-session auth if needed later)
       connectHeaders: {
         Authorization: `Bearer ${token}`,
       },
 
-      reconnectDelay: 5000,   // auto-reconnect after 5s if connection drops
+      reconnectDelay: 5000,
 
       onConnect: () => {
         console.log('[WS] Connected')
+        // Re-establish every registered subscription on (re)connect
+        for (const [id, entry] of subscriptionsRef.current) {
+          if (entry.sub) {
+            try { entry.sub.unsubscribe() } catch (_) {}
+          }
+          const sub = client.subscribe(entry.destination, (message) => {
+            try {
+              const event = JSON.parse(message.body)
+              entry.callback(event)
+            } catch (e) {
+              console.warn('[WS] Failed to parse message:', e)
+            }
+          })
+          subscriptionsRef.current.set(id, { ...entry, sub })
+        }
       },
 
       onDisconnect: () => {
@@ -60,7 +58,6 @@ export function WebSocketProvider({ children }) {
         console.error('[WS] STOMP error:', frame.headers?.message)
       },
 
-      // Suppress verbose debug logs in production
       debug: import.meta.env.DEV ? (msg) => console.debug('[WS]', msg) : () => {},
     })
 
@@ -77,15 +74,14 @@ export function WebSocketProvider({ children }) {
       clientRef.current = null
       console.log('[WS] Manually disconnected')
     }
+    subscriptionsRef.current.clear()
   }, [])
 
   /**
    * subscribe — subscribe to a STOMP destination.
    *
-   * Returns an unsubscribe function to be called on component unmount.
-   *
-   * If the client is not yet connected, the subscription is registered
-   * via onConnect so it fires once the connection is established.
+   * Registers the subscription in an internal map so it survives
+   * WebSocket reconnects.  Returns an unsubscribe function.
    *
    * @param {string}   destination  e.g. '/topic/matches/42'
    * @param {function} callback     called with the parsed WebSocketEvent payload
@@ -95,10 +91,11 @@ export function WebSocketProvider({ children }) {
     const client = clientRef.current
     if (!client) return () => {}
 
-    let subscription = null
+    const id = ++subIdRef.current
+    let sub = null
 
-    const doSubscribe = () => {
-      subscription = client.subscribe(destination, (message) => {
+    if (client.connected) {
+      sub = client.subscribe(destination, (message) => {
         try {
           const event = JSON.parse(message.body)
           callback(event)
@@ -108,22 +105,22 @@ export function WebSocketProvider({ children }) {
       })
     }
 
-    if (client.connected) {
-      doSubscribe()
-    } else {
-      // Queue subscription to fire once connection is established
-      const originalOnConnect = client.onConnect
-      client.onConnect = (frame) => {
-        if (originalOnConnect) originalOnConnect(frame)
-        doSubscribe()
-      }
-    }
+    subscriptionsRef.current.set(id, { destination, callback, sub })
 
     // Return unsubscribe function
     return () => {
-      if (subscription) {
-        try { subscription.unsubscribe() } catch (_) {}
+      const entry = subscriptionsRef.current.get(id)
+      if (entry?.sub) {
+        try { entry.sub.unsubscribe() } catch (_) {}
       }
+      subscriptionsRef.current.delete(id)
+    }
+  }, [])
+
+  // Clean up all subscriptions when provider unmounts
+  useEffect(() => {
+    return () => {
+      subscriptionsRef.current.clear()
     }
   }, [])
 

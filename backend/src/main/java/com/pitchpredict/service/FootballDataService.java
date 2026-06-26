@@ -213,7 +213,8 @@ public class FootballDataService {
         String utcDate = m.path("utcDate").asText(null);
         if (utcDate != null && !utcDate.isBlank()) {
             ZonedDateTime zdt = ZonedDateTime.parse(utcDate, DateTimeFormatter.ISO_DATE_TIME);
-            match.setMatchDate(zdt.withZoneSameInstant(ZoneId.systemDefault()).toLocalDateTime());
+            // Store in UTC so timezone is unambiguous across all servers & clients
+            match.setMatchDate(zdt.withZoneSameInstant(ZoneOffset.UTC).toLocalDateTime());
         }
 
         match.setStage(m.path("stage").asText(null));

@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Calendar, Users, Check, Search, LogIn, Trophy } from 'lucide-react'
@@ -8,12 +8,14 @@ import JoinRoomModal from '../components/JoinRoomModal'
 import { STATUS_COLORS } from '../utils/constants'
 import { formatDate } from '../utils/helpers'
 import { useAuth } from '../context/AuthContext'
+import { useWebSocket } from '../context/WebSocketContext'
 import API from '../api/axios'
 
 export default function EventDetailPage() {
   const { id } = useParams()
   const navigate = useNavigate()
   const { user } = useAuth()
+  const { subscribe } = useWebSocket()
 
   const [event, setEvent]         = useState(null)
   const [rooms, setRooms]         = useState([])
@@ -22,6 +24,7 @@ export default function EventDetailPage() {
   const [loading, setLoading]     = useState(true)
   const [searchQuery, setSearch]  = useState('')
   const [joinModalRoom, setJoinModalRoom] = useState(null)
+  const initialLoadDone = useRef(false)
 
   const loadData = () =>
     Promise.all([
@@ -34,9 +37,26 @@ export default function EventDetailPage() {
         setRooms(r.data)
         setMatches(m.data)
       })
-      .finally(() => setLoading(false))
+      .finally(() => {
+        if (!initialLoadDone.current) {
+          setLoading(false)
+          initialLoadDone.current = true
+        }
+      })
 
   useEffect(() => { loadData() }, [id])
+
+  // ── WebSocket: live match updates ─────────────────────────────────────
+  useEffect(() => {
+    if (!initialLoadDone.current) return
+    const unsub = subscribe(`/topic/matches/${id}`, (event) => {
+      const updatedMatch = event.payload
+      setMatches((prev) =>
+        prev.map((m) => (m.id === updatedMatch.id ? updatedMatch : m))
+      )
+    })
+    return unsub
+  }, [loading, subscribe, id])
 
   // Filter rooms by name/description
   const filteredRooms = useMemo(() => {
