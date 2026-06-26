@@ -48,6 +48,13 @@ function PredictionWindowCountdown({ matchDate }) {
 }
 
 export default function MatchCard({ match, onClick, children }) {
+  // Tick every 10s so relative time / countdown displays update
+  const [, setTick] = useState(0)
+  useEffect(() => {
+    const id = setInterval(() => setTick(n => n + 1), 10000)
+    return () => clearInterval(id)
+  }, [])
+
   const isLive      = match.status === 'LIVE'
   const isFinished  = match.status === 'FINISHED'
   const isPostponed = match.status === 'POSTPONED'

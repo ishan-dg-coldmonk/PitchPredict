@@ -1,3 +1,4 @@
+import { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
 import { MapPin, Clock } from 'lucide-react'
 import LiveIndicator from './LiveIndicator'
@@ -5,6 +6,13 @@ import { formatDateTimeIST, timeUntil } from '../utils/helpers'
 
 export default function FeaturedMatchCard({ match, onClick }) {
   if (!match) return null
+
+  // Tick every 10s so the countdown stays current
+  const [, setTick] = useState(0)
+  useEffect(() => {
+    const id = setInterval(() => setTick(n => n + 1), 10000)
+    return () => clearInterval(id)
+  }, [])
 
   const isLive     = match.status === 'LIVE'
   const isFinished = match.status === 'FINISHED'
