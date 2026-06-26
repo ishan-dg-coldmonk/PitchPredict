@@ -11,6 +11,7 @@ import com.pitchpredict.repository.PredictionRepository;
 import com.pitchpredict.repository.RoomMemberRepository;
 import com.pitchpredict.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
@@ -19,6 +20,7 @@ import java.util.Optional;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class PredictionService {
 
     /** Must match MatchService.PREDICTION_CLOSE_MINUTES */
@@ -31,21 +33,29 @@ public class PredictionService {
 
     public PredictionDTO submitPrediction(Long userId, Long matchId, Long eventId,
                                           Long roomId, int homeScore, int awayScore) {
+        log.info("[Prediction] submitPrediction - userId={} matchId={} roomId={} pred={}:{}",
+                userId, matchId, roomId, homeScore, awayScore);
+
         Match match = matchRepository.findById(matchId)
                 .orElseThrow(() -> ApiException.notFound("Match not found"));
 
         // Dynamic prediction window check — backend is the authority.
         // The DB no longer stores a predictionOpen flag.
         if (match.getStatus() != MatchStatus.SCHEDULED) {
+            log.warn("[Prediction] REJECTED - match not SCHEDULED (status={}) - userId={} matchId={}",
+                    match.getStatus(), userId, matchId);
             throw ApiException.badRequest("Predictions are not accepted for matches that are live or finished");
         }
 
         LocalDateTime deadline = match.getMatchDate().minusMinutes(CLOSE_BEFORE_KICKOFF_MINUTES);
         if (!LocalDateTime.now().isBefore(deadline)) {
+            log.warn("[Prediction] REJECTED - window closed (deadline={}) - userId={} matchId={}",
+                    deadline, userId, matchId);
             throw ApiException.badRequest("Prediction window is closed — submissions end 5 minutes before kick-off");
         }
 
         if (!roomMemberRepository.existsByRoomIdAndUserId(roomId, userId)) {
+            log.warn("[Prediction] REJECTED - user not in room - userId={} roomId={}", userId, roomId);
             throw ApiException.forbidden("You must join the room before predicting");
         }
 
@@ -57,6 +67,8 @@ public class PredictionService {
             prediction = existing.get();
             prediction.setPredictedHomeScore(homeScore);
             prediction.setPredictedAwayScore(awayScore);
+            log.info("[Prediction] Updated existing prediction id={} - userId={} matchId={} now={}:{}",
+                    prediction.getId(), userId, matchId, homeScore, awayScore);
         } else {
             prediction = Prediction.builder()
                     .userId(userId)
@@ -66,9 +78,13 @@ public class PredictionService {
                     .predictedHomeScore(homeScore)
                     .predictedAwayScore(awayScore)
                     .build();
+            log.info("[Prediction] Creating new prediction - userId={} matchId={} roomId={}",
+                    userId, matchId, roomId);
         }
 
         prediction = predictionRepository.save(prediction);
+        log.info("[Prediction] submitPrediction ✓ - predictionId={} userId={} matchId={}",
+                prediction.getId(), userId, matchId);
         return toDTO(prediction);
     }
 

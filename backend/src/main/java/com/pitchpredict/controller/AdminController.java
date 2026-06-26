@@ -20,6 +20,7 @@ import com.pitchpredict.service.MatchService;
 import com.pitchpredict.service.PointsCalculationService;
 import com.pitchpredict.service.RoomService;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
@@ -35,6 +36,7 @@ import java.util.Map;
 @RestController
 @RequestMapping("/api/admin")
 @RequiredArgsConstructor
+@Slf4j
 public class AdminController {
 
     private final EventService eventService;
@@ -53,8 +55,10 @@ public class AdminController {
     public ResponseEntity<EventDTO> createEvent(@RequestBody Map<String, Object> body,
                                                  Authentication authentication) {
         Long userId = getUserId(authentication);
+        String title = (String) body.get("title");
+        log.info("[API] POST /api/admin/events - title={} by userId={}", title, userId);
         Event event = Event.builder()
-                .title((String) body.get("title"))
+                .title(title)
                 .description((String) body.get("description"))
                 .sport((String) body.getOrDefault("sport", "Football"))
                 .bannerUrl((String) body.get("bannerUrl"))
@@ -65,12 +69,15 @@ public class AdminController {
                 .predictableStages((String) body.get("predictableStages"))
                 .createdBy(userId)
                 .build();
-        return ResponseEntity.ok(eventService.createEvent(event));
+        EventDTO dto = eventService.createEvent(event);
+        log.info("[API] POST /api/admin/events ✓ - eventId={}", dto.getId());
+        return ResponseEntity.ok(dto);
     }
 
     @PutMapping("/events/{id}")
     public ResponseEntity<EventDTO> updateEvent(@PathVariable Long id,
                                                  @RequestBody Map<String, Object> body) {
+        log.info("[API] PUT /api/admin/events/{}", id);
         Event updated = Event.builder()
                 .title((String) body.get("title"))
                 .description((String) body.get("description"))
@@ -82,56 +89,80 @@ public class AdminController {
                 .apiCompId((String) body.get("apiCompId"))
                 .predictableStages((String) body.get("predictableStages"))
                 .build();
-        return ResponseEntity.ok(eventService.updateEvent(id, updated));
+        EventDTO dto = eventService.updateEvent(id, updated);
+        log.info("[API] PUT /api/admin/events/{} ✓", id);
+        return ResponseEntity.ok(dto);
     }
 
     @PostMapping("/events/{id}/sync-matches")
     public ResponseEntity<Map<String, Object>> syncMatches(@PathVariable Long id) {
+        log.info("[API] POST /api/admin/events/{}/sync-matches", id);
         int count = footballDataService.syncMatches(id);
+        log.info("[API] POST /api/admin/events/{}/sync-matches ✓ - {} match(es)", id, count);
         return ResponseEntity.ok(Map.of("synced", count));
     }
 
     @PostMapping("/events/{id}/sync-goals")
     public ResponseEntity<Map<String, Object>> syncGoals(@PathVariable Long id) {
+        log.info("[API] POST /api/admin/events/{}/sync-goals", id);
         int count = footballDataService.syncGoalsForEvent(id);
+        log.info("[API] POST /api/admin/events/{}/sync-goals ✓ - {} goal(s)", id, count);
         return ResponseEntity.ok(Map.of("synced", count));
     }
 
     @PostMapping("/events/{id}/activate")
     public ResponseEntity<EventDTO> activateEvent(@PathVariable Long id) {
-        return ResponseEntity.ok(eventService.activateEvent(id));
+        log.info("[API] POST /api/admin/events/{}/activate", id);
+        EventDTO dto = eventService.activateEvent(id);
+        log.info("[API] POST /api/admin/events/{}/activate ✓", id);
+        return ResponseEntity.ok(dto);
     }
 
     @PostMapping("/events/{id}/finish")
     public ResponseEntity<EventDTO> finishEvent(@PathVariable Long id) {
-        return ResponseEntity.ok(eventService.finishEvent(id));
+        log.info("[API] POST /api/admin/events/{}/finish", id);
+        EventDTO dto = eventService.finishEvent(id);
+        log.info("[API] POST /api/admin/events/{}/finish ✓", id);
+        return ResponseEntity.ok(dto);
     }
 
     // ── Admin: rooms under an event ───────────────────────────────────────────
 
     @GetMapping("/events/{eventId}/rooms")
     public ResponseEntity<List<RoomDTO>> getRoomsForEvent(@PathVariable Long eventId) {
-        return ResponseEntity.ok(roomService.getRoomsForAdmin(eventId));
+        log.info("[API] GET /api/admin/events/{}/rooms", eventId);
+        List<RoomDTO> rooms = roomService.getRoomsForAdmin(eventId);
+        log.info("[API] GET /api/admin/events/{}/rooms ✓ - {} room(s)", eventId, rooms.size());
+        return ResponseEntity.ok(rooms);
     }
 
     @GetMapping("/rooms/{roomId}/leaderboard")
     public ResponseEntity<List<LeaderboardEntry>> getRoomLeaderboard(@PathVariable Long roomId) {
-        return ResponseEntity.ok(leaderboardService.getLeaderboard(roomId));
+        log.info("[API] GET /api/admin/rooms/{}/leaderboard", roomId);
+        List<LeaderboardEntry> lb = leaderboardService.getLeaderboard(roomId);
+        log.info("[API] GET /api/admin/rooms/{}/leaderboard ✓ - {} entries", roomId, lb.size());
+        return ResponseEntity.ok(lb);
     }
 
     @GetMapping("/rooms/{roomId}/members")
     public ResponseEntity<List<RoomMemberDTO>> getRoomMembers(@PathVariable Long roomId) {
-        return ResponseEntity.ok(roomService.getRoomMembers(roomId));
+        log.info("[API] GET /api/admin/rooms/{}/members", roomId);
+        List<RoomMemberDTO> members = roomService.getRoomMembers(roomId);
+        log.info("[API] GET /api/admin/rooms/{}/members ✓ - {} member(s)", roomId, members.size());
+        return ResponseEntity.ok(members);
     }
 
     // ── Matches ───────────────────────────────────────────────────────────────
 
     @PostMapping("/matches")
     public ResponseEntity<MatchDTO> createMatch(@RequestBody Map<String, Object> body) {
+        String homeTeam = (String) body.get("homeTeam");
+        String awayTeam = (String) body.get("awayTeam");
+        log.info("[API] POST /api/admin/matches - {} vs {}", homeTeam, awayTeam);
         Match match = Match.builder()
                 .eventId(Long.valueOf(body.get("eventId").toString()))
-                .homeTeam((String) body.get("homeTeam"))
-                .awayTeam((String) body.get("awayTeam"))
+                .homeTeam(homeTeam)
+                .awayTeam(awayTeam)
                 .homeFlag((String) body.get("homeFlag"))
                 .awayFlag((String) body.get("awayFlag"))
                 .matchDate(LocalDateTime.parse((String) body.get("matchDate")))
@@ -139,35 +170,46 @@ public class AdminController {
                 .venue((String) body.get("venue"))
                 .build();
         match = matchRepository.save(match);
-        return ResponseEntity.ok(matchService.toDTO(match));
+        MatchDTO dto = matchService.toDTO(match);
+        log.info("[API] POST /api/admin/matches ✓ - matchId={}", dto.getId());
+        return ResponseEntity.ok(dto);
     }
 
     @PostMapping("/matches/{id}/set-score")
     public ResponseEntity<MatchDTO> setMatchScore(@PathVariable Long id,
                                                    @RequestBody Map<String, Object> body) {
+        int homeScore = Integer.parseInt(body.get("homeScore").toString());
+        int awayScore = Integer.parseInt(body.get("awayScore").toString());
+        log.info("[API] POST /api/admin/matches/{}/set-score - setting {}:{} (FINISHED)", id, homeScore, awayScore);
         Match match = matchRepository.findById(id)
                 .orElseThrow(() -> ApiException.notFound("Match not found"));
-        match.setHomeScore(Integer.parseInt(body.get("homeScore").toString()));
-        match.setAwayScore(Integer.parseInt(body.get("awayScore").toString()));
+        match.setHomeScore(homeScore);
+        match.setAwayScore(awayScore);
         match.setStatus(MatchStatus.FINISHED);
         // Note: no predictionOpen flag — eligibility is computed dynamically
         match = matchRepository.save(match);
         pointsCalculationService.calculatePointsForMatch(match);
-        return ResponseEntity.ok(matchService.toDTO(match));
+        MatchDTO dto = matchService.toDTO(match);
+        log.info("[API] POST /api/admin/matches/{}/set-score ✓", id);
+        return ResponseEntity.ok(dto);
     }
 
     @PostMapping("/matches/{id}/goals")
     public ResponseEntity<MatchDTO> setMatchGoals(@PathVariable Long id,
                                                    @RequestBody List<MatchGoalDTO> goals) {
+        log.info("[API] POST /api/admin/matches/{}/goals - {} goal(s)", id, goals.size());
         Match match = matchRepository.findById(id)
                 .orElseThrow(() -> ApiException.notFound("Match not found"));
         try {
             match.setGoalsJson(objectMapper.writeValueAsString(goals));
         } catch (Exception e) {
+            log.warn("[API] Failed to serialize goals for match {}: {}", id, e.getMessage());
             throw ApiException.badRequest("Invalid goals data");
         }
         match = matchRepository.save(match);
-        return ResponseEntity.ok(matchService.toDTO(match));
+        MatchDTO dto = matchService.toDTO(match);
+        log.info("[API] POST /api/admin/matches/{}/goals ✓", id);
+        return ResponseEntity.ok(dto);
     }
 
     // ── Rooms ─────────────────────────────────────────────────────────────────
@@ -176,16 +218,20 @@ public class AdminController {
     public ResponseEntity<RoomDTO> createRoom(@RequestBody Map<String, Object> body,
                                                Authentication authentication) {
         Long userId = getUserId(authentication);
+        String name = (String) body.get("name");
+        log.info("[API] POST /api/admin/rooms - name={} by userId={}", name, userId);
         Room room = Room.builder()
                 .eventId(Long.valueOf(body.get("eventId").toString()))
-                .name((String) body.get("name"))
+                .name(name)
                 .description((String) body.get("description"))
                 .registrationCode((String) body.get("registrationCode"))
                 .maxMembers(body.get("maxMembers") != null
                         ? Integer.parseInt(body.get("maxMembers").toString()) : null)
                 .createdBy(userId)
                 .build();
-        return ResponseEntity.ok(roomService.createRoom(room));
+        RoomDTO dto = roomService.createRoom(room);
+        log.info("[API] POST /api/admin/rooms ✓ - roomId={} code={}", dto.getId(), dto.getRegistrationCode());
+        return ResponseEntity.ok(dto);
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────

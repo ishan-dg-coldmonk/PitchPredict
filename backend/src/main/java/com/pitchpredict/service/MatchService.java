@@ -28,21 +28,29 @@ public class MatchService {
     private final ObjectMapper objectMapper;
 
     public List<MatchDTO> getMatchesByEvent(Long eventId) {
-        return matchRepository.findByEventIdOrderByMatchDateAsc(eventId).stream()
+        log.info("[Match] getMatchesByEvent - eventId={}", eventId);
+        List<MatchDTO> matches = matchRepository.findByEventIdOrderByMatchDateAsc(eventId).stream()
                 .map(this::toDTO)
                 .toList();
+        log.info("[Match] getMatchesByEvent ✓ - eventId={} → {} match(es)", eventId, matches.size());
+        return matches;
     }
 
     public MatchDTO getMatch(Long id) {
+        log.info("[Match] getMatch - id={}", id);
         Match match = matchRepository.findById(id)
                 .orElseThrow(() -> ApiException.notFound("Match not found"));
-        return toDTO(match);
+        MatchDTO dto = toDTO(match);
+        log.info("[Match] getMatch ✓ - id={} {} vs {} ({})", id, dto.getHomeTeam(), dto.getAwayTeam(), dto.getStatus());
+        return dto;
     }
 
     public List<MatchDTO> getLiveMatches() {
-        return matchRepository.findByStatus(MatchStatus.LIVE).stream()
+        List<MatchDTO> matches = matchRepository.findByStatus(MatchStatus.LIVE).stream()
                 .map(this::toDTO)
                 .toList();
+        log.info("[Match] getLiveMatches ✓ - {} live match(es)", matches.size());
+        return matches;
     }
 
     public MatchDTO toDTO(Match match) {
@@ -77,9 +85,16 @@ public class MatchService {
      *   - LIVE, FINISHED, SUSPENDED etc. are always false.
      */
     public boolean computePredictionOpen(Match match) {
-        if (match.getStatus() != MatchStatus.SCHEDULED) return false;
+        if (match.getStatus() != MatchStatus.SCHEDULED) {
+            log.debug("[Match] predictionOpen=false - matchId={} status={} (not SCHEDULED)",
+                    match.getId(), match.getStatus());
+            return false;
+        }
         LocalDateTime deadline = match.getMatchDate().minusMinutes(PREDICTION_CLOSE_MINUTES);
-        return LocalDateTime.now().isBefore(deadline);
+        boolean open = LocalDateTime.now().isBefore(deadline);
+        log.debug("[Match] predictionOpen={} - matchId={} matchDate={} deadline={}",
+                open, match.getId(), match.getMatchDate(), deadline);
+        return open;
     }
 
     private List<MatchGoalDTO> parseGoals(String goalsJson) {

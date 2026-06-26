@@ -18,6 +18,7 @@ C:\Users\ishan\OneDrive\Documents\Desktop\pitchPredict-main\pitchPredict-main\ba
 C:\Users\ishan\OneDrive\Documents\Desktop\pitchPredict-main\pitchPredict-main\backend\src\main\java\com\pitchpredict\dto\RoomDTO.java
 C:\Users\ishan\OneDrive\Documents\Desktop\pitchPredict-main\pitchPredict-main\backend\src\main\java\com\pitchpredict\dto\RoomMemberDTO.java
 C:\Users\ishan\OneDrive\Documents\Desktop\pitchPredict-main\pitchPredict-main\backend\src\main\java\com\pitchpredict\dto\SignupRequest.java
+C:\Users\ishan\OneDrive\Documents\Desktop\pitchPredict-main\pitchPredict-main\backend\src\main\java\com\pitchpredict\dto\WebSocketEvent.java
 C:\Users\ishan\OneDrive\Documents\Desktop\pitchPredict-main\pitchPredict-main\backend\src\main\java\com\pitchpredict\entity\Event.java
 C:\Users\ishan\OneDrive\Documents\Desktop\pitchPredict-main\pitchPredict-main\backend\src\main\java\com\pitchpredict\entity\Match.java
 C:\Users\ishan\OneDrive\Documents\Desktop\pitchPredict-main\pitchPredict-main\backend\src\main\java\com\pitchpredict\entity\Prediction.java
@@ -37,7 +38,6 @@ C:\Users\ishan\OneDrive\Documents\Desktop\pitchPredict-main\pitchPredict-main\ba
 C:\Users\ishan\OneDrive\Documents\Desktop\pitchPredict-main\pitchPredict-main\backend\src\main\java\com\pitchpredict\repository\RoomRepository.java
 C:\Users\ishan\OneDrive\Documents\Desktop\pitchPredict-main\pitchPredict-main\backend\src\main\java\com\pitchpredict\repository\UserRepository.java
 C:\Users\ishan\OneDrive\Documents\Desktop\pitchPredict-main\pitchPredict-main\backend\src\main\java\com\pitchpredict\scheduler\MatchScoreUpdater.java
-C:\Users\ishan\OneDrive\Documents\Desktop\pitchPredict-main\pitchPredict-main\backend\src\main\java\com\pitchpredict\scheduler\PredictionWindowManager.java
 C:\Users\ishan\OneDrive\Documents\Desktop\pitchPredict-main\pitchPredict-main\backend\src\main\java\com\pitchpredict\security\JwtAuthenticationFilter.java
 C:\Users\ishan\OneDrive\Documents\Desktop\pitchPredict-main\pitchPredict-main\backend\src\main\java\com\pitchpredict\security\JwtTokenProvider.java
 C:\Users\ishan\OneDrive\Documents\Desktop\pitchPredict-main\pitchPredict-main\backend\src\main\java\com\pitchpredict\security\UserDetailsServiceImpl.java
@@ -49,3 +49,4 @@ C:\Users\ishan\OneDrive\Documents\Desktop\pitchPredict-main\pitchPredict-main\ba
 C:\Users\ishan\OneDrive\Documents\Desktop\pitchPredict-main\pitchPredict-main\backend\src\main\java\com\pitchpredict\service\PointsCalculationService.java
 C:\Users\ishan\OneDrive\Documents\Desktop\pitchPredict-main\pitchPredict-main\backend\src\main\java\com\pitchpredict\service\PredictionService.java
 C:\Users\ishan\OneDrive\Documents\Desktop\pitchPredict-main\pitchPredict-main\backend\src\main\java\com\pitchpredict\service\RoomService.java
+C:\Users\ishan\OneDrive\Documents\Desktop\pitchPredict-main\pitchPredict-main\backend\src\main\java\com\pitchpredict\service\WebSocketService.java

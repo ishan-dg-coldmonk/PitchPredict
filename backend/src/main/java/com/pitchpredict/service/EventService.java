@@ -8,12 +8,14 @@ import com.pitchpredict.repository.EventRepository;
 import com.pitchpredict.repository.MatchRepository;
 import com.pitchpredict.repository.RoomRepository;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class EventService {
 
     private final EventRepository eventRepository;
@@ -21,23 +23,32 @@ public class EventService {
     private final MatchRepository matchRepository;
 
     public List<EventDTO> getAllEvents() {
-        return eventRepository.findAllByOrderByCreatedAtDesc().stream()
+        List<EventDTO> events = eventRepository.findAllByOrderByCreatedAtDesc().stream()
                 .map(this::toDTO)
                 .toList();
+        log.info("[Event] getAllEvents ✓ - {} event(s)", events.size());
+        return events;
     }
 
     public EventDTO getEvent(Long id) {
+        log.info("[Event] getEvent - id={}", id);
         Event event = eventRepository.findById(id)
                 .orElseThrow(() -> ApiException.notFound("Event not found"));
-        return toDTO(event);
+        EventDTO dto = toDTO(event);
+        log.info("[Event] getEvent ✓ - id={} title={} status={}", id, dto.getTitle(), dto.getStatus());
+        return dto;
     }
 
     public EventDTO createEvent(Event event) {
+        log.info("[Event] createEvent - title={}", event.getTitle());
         event = eventRepository.save(event);
-        return toDTO(event);
+        EventDTO dto = toDTO(event);
+        log.info("[Event] createEvent ✓ - eventId={}", dto.getId());
+        return dto;
     }
 
     public EventDTO updateEvent(Long id, Event updated) {
+        log.info("[Event] updateEvent - id={}", id);
         Event event = eventRepository.findById(id)
                 .orElseThrow(() -> ApiException.notFound("Event not found"));
 
@@ -52,21 +63,28 @@ public class EventService {
         if (updated.getPredictableStages() != null)  event.setPredictableStages(updated.getPredictableStages());
 
         event = eventRepository.save(event);
+        log.info("[Event] updateEvent ✓ - id={}", id);
         return toDTO(event);
     }
 
     public EventDTO activateEvent(Long id) {
+        log.info("[Event] activateEvent - id={}", id);
         Event event = eventRepository.findById(id)
                 .orElseThrow(() -> ApiException.notFound("Event not found"));
         event.setStatus(EventStatus.ACTIVE);
-        return toDTO(eventRepository.save(event));
+        EventDTO dto = toDTO(eventRepository.save(event));
+        log.info("[Event] activateEvent ✓ - id={} title={}", id, dto.getTitle());
+        return dto;
     }
 
     public EventDTO finishEvent(Long id) {
+        log.info("[Event] finishEvent - id={}", id);
         Event event = eventRepository.findById(id)
                 .orElseThrow(() -> ApiException.notFound("Event not found"));
         event.setStatus(EventStatus.COMPLETED);
-        return toDTO(eventRepository.save(event));
+        EventDTO dto = toDTO(eventRepository.save(event));
+        log.info("[Event] finishEvent ✓ - id={} title={}", id, dto.getTitle());
+        return dto;
     }
 
     private EventDTO toDTO(Event event) {

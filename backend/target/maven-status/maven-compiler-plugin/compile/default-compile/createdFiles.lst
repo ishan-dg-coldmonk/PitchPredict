@@ -21,7 +21,6 @@ com\pitchpredict\controller\EventController.class
 com\pitchpredict\service\FootballDataService.class
 com\pitchpredict\dto\RoomDTO.class
 com\pitchpredict\entity\RoomMember.class
-com\pitchpredict\scheduler\PredictionWindowManager.class
 com\pitchpredict\repository\UserRepository.class
 com\pitchpredict\service\AuthService.class
 com\pitchpredict\controller\AuthController.class
@@ -48,7 +47,6 @@ com\pitchpredict\entity\RoomMember$RoomMemberBuilder.class
 com\pitchpredict\exception\GlobalExceptionHandler.class
 com\pitchpredict\dto\LeaderboardEntry.class
 com\pitchpredict\dto\MatchGoalDTO$MatchGoalDTOBuilder.class
-com\pitchpredict\controller\AdminController.class
 com\pitchpredict\dto\MatchDTO$MatchDTOBuilder.class
 com\pitchpredict\repository\RoomRepository.class
 com\pitchpredict\controller\PredictionController.class
