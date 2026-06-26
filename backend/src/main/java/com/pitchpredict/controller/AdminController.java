@@ -53,7 +53,6 @@ public class AdminController {
     public ResponseEntity<EventDTO> createEvent(@RequestBody Map<String, Object> body,
                                                  Authentication authentication) {
         Long userId = getUserId(authentication);
-
         Event event = Event.builder()
                 .title((String) body.get("title"))
                 .description((String) body.get("description"))
@@ -66,7 +65,6 @@ public class AdminController {
                 .predictableStages((String) body.get("predictableStages"))
                 .createdBy(userId)
                 .build();
-
         return ResponseEntity.ok(eventService.createEvent(event));
     }
 
@@ -84,7 +82,6 @@ public class AdminController {
                 .apiCompId((String) body.get("apiCompId"))
                 .predictableStages((String) body.get("predictableStages"))
                 .build();
-
         return ResponseEntity.ok(eventService.updateEvent(id, updated));
     }
 
@@ -153,7 +150,7 @@ public class AdminController {
         match.setHomeScore(Integer.parseInt(body.get("homeScore").toString()));
         match.setAwayScore(Integer.parseInt(body.get("awayScore").toString()));
         match.setStatus(MatchStatus.FINISHED);
-        match.setPredictionOpen(false);
+        // Note: no predictionOpen flag — eligibility is computed dynamically
         match = matchRepository.save(match);
         pointsCalculationService.calculatePointsForMatch(match);
         return ResponseEntity.ok(matchService.toDTO(match));
@@ -179,7 +176,6 @@ public class AdminController {
     public ResponseEntity<RoomDTO> createRoom(@RequestBody Map<String, Object> body,
                                                Authentication authentication) {
         Long userId = getUserId(authentication);
-
         Room room = Room.builder()
                 .eventId(Long.valueOf(body.get("eventId").toString()))
                 .name((String) body.get("name"))
@@ -189,7 +185,6 @@ public class AdminController {
                         ? Integer.parseInt(body.get("maxMembers").toString()) : null)
                 .createdBy(userId)
                 .build();
-
         return ResponseEntity.ok(roomService.createRoom(room));
     }
 

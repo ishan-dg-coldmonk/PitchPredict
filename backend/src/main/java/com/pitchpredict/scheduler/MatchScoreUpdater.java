@@ -1,59 +1,54 @@
 package com.pitchpredict.scheduler;
 
+import com.pitchpredict.dto.MatchDTO;
 import com.pitchpredict.entity.Match;
 import com.pitchpredict.enums.MatchStatus;
 import com.pitchpredict.repository.MatchRepository;
 import com.pitchpredict.service.FootballDataService;
+import com.pitchpredict.service.MatchService;
 import com.pitchpredict.service.PointsCalculationService;
+import com.pitchpredict.service.WebSocketService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
 import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.List;
 
 /**
  * MatchScoreUpdater
  *
- * Runs every 60 seconds. Looks at the match schedule by TIME, not by status.
+ * Runs every 60 seconds.
  *
- * Logic:
- *   Window = [ now - 3 hours  →  now + 5 minutes ]
+ * Finds matches in the active window:
+ *   matchDate BETWEEN (now - 3h) AND (now + 15min)
+ *   AND status NOT IN (FINISHED, CANCELLED, POSTPONED)
+ *   AND externalMatchId IS NOT NULL
  *
- *   - "now + 5 min" forward edge: catches matches about to kick off.
- *     We start polling 5 minutes before the scheduled start so we detect
- *     SCHEDULED → LIVE the moment the API reflects it, not a minute late.
+ * For each match:
+ *   1. Polls football-data.org for current status + score
+ *   2. Persists any changes to DB
+ *   3. Broadcasts WebSocket events for status/score changes
+ *   4. Triggers points calculation on FINISHED transition
  *
- *   - "now - 3 hours" back edge: a normal match is 90 min + stoppages.
- *     With extra time and penalties it can reach ~130 min. 3 hours is a
- *     safe upper bound — any match that kicked off within the last 3 hours
- *     and is not yet FINISHED/CANCELLED in our DB still needs polling.
- *
- *   - Matches already FINISHED, CANCELLED, or POSTPONED are excluded by
- *     the query — no point calling the API for them.
- *
- *   - If nothing is in the window: return early, zero API calls made.
- *
- * Points calculation:
- *   When a polled match flips to FINISHED, we immediately calculate points.
- *   The pointsCalculated flag on Match prevents double-calculation if this
- *   scheduler fires twice around the transition (e.g. app restart mid-game).
+ * If no matches are in the window: returns early, zero API calls.
  */
 @Component
 @RequiredArgsConstructor
 @Slf4j
 public class MatchScoreUpdater {
 
-    /** How far back to look for still-running matches (covers 90min + ET + pens) */
-    private static final int LOOKBACK_HOURS   = 3;
+    private static final int LOOKBACK_HOURS    = 3;
+    private static final int LOOKAHEAD_MINUTES = 15;
+    private static final DateTimeFormatter FMT = DateTimeFormatter.ofPattern("dd-MMM HH:mm");
 
-    /** How far ahead to look so we catch matches before they go live */
-    private static final int LOOKAHEAD_MINUTES = 5;
-
-    private final MatchRepository         matchRepository;
-    private final FootballDataService     footballDataService;
+    private final MatchRepository          matchRepository;
+    private final FootballDataService      footballDataService;
     private final PointsCalculationService pointsCalculationService;
+    private final MatchService             matchService;
+    private final WebSocketService         webSocketService;
 
     @Scheduled(fixedRate = 60_000)
     public void run() {
@@ -64,28 +59,68 @@ public class MatchScoreUpdater {
         List<Match> candidates = matchRepository.findMatchesInActiveWindow(from, to);
 
         if (candidates.isEmpty()) {
-            // Nothing happening right now — skip quietly
+            log.debug("[Scheduler] No matches in window [{} → {}] — idle",
+                    from.format(FMT), to.format(FMT));
             return;
         }
 
-        log.debug("Active window [{} → {}]: {} match(es) to poll",
-                from, to, candidates.size());
+        log.info("[Scheduler] Window [{} → {}] │ {} match(es) to poll",
+                from.format(FMT), to.format(FMT), candidates.size());
+
+        int polled = 0, changed = 0, failed = 0;
 
         for (Match match : candidates) {
             MatchStatus statusBefore = match.getStatus();
+            Integer scoreBefore_home = match.getHomeScore();
+            Integer scoreBefore_away = match.getAwayScore();
 
-            // Poll football-data.org and update the DB record in-place.
-            // Returns the updated match, or empty if the API call failed
-            // (logged inside; we just skip that match this tick).
-            footballDataService.pollSingleMatch(match).ifPresent(updated -> {
+            var result = footballDataService.pollSingleMatch(match);
 
-                // Detect FINISHED transition
-                if (statusBefore != MatchStatus.FINISHED
-                        && updated.getStatus() == MatchStatus.FINISHED) {
+            if (result.isEmpty()) {
+                failed++;
+                continue;
+            }
 
-                    pointsCalculationService.calculatePointsForMatch(updated);
-                }
-            });
+            Match updated = result.get();
+            polled++;
+
+            MatchStatus statusAfter = updated.getStatus();
+            boolean statusChanged = statusBefore != statusAfter;
+            boolean scoreChanged  = statusAfter == MatchStatus.LIVE && (
+                    !java.util.Objects.equals(scoreBefore_home, updated.getHomeScore()) ||
+                    !java.util.Objects.equals(scoreBefore_away, updated.getAwayScore())
+            );
+
+            // Build DTO once (predictionOpen computed dynamically inside toDTO)
+            MatchDTO dto = matchService.toDTO(updated);
+
+            // ── WebSocket broadcasts ────────────────────────────────────────
+            if (statusChanged && statusAfter == MatchStatus.LIVE) {
+                webSocketService.broadcastMatchLive(dto);
+                changed++;
+            } else if (statusChanged && statusAfter == MatchStatus.FINISHED) {
+                webSocketService.broadcastMatchFinished(dto);
+                changed++;
+            } else if (scoreChanged) {
+                webSocketService.broadcastMatchUpdated(dto);
+                changed++;
+                log.info("[Scheduler] Score update │ matchId={} │ {} {}-{} {}",
+                        updated.getId(),
+                        updated.getHomeTeam(), updated.getHomeScore(),
+                        updated.getAwayScore(), updated.getAwayTeam());
+            }
+
+            // ── Points calculation on FINISHED transition ───────────────────
+            if (statusBefore != MatchStatus.FINISHED && statusAfter == MatchStatus.FINISHED) {
+                log.info("[Scheduler] FINISHED │ matchId={} │ {} {}-{} {} → calculating points",
+                        updated.getId(),
+                        updated.getHomeTeam(), updated.getHomeScore(),
+                        updated.getAwayScore(), updated.getAwayTeam());
+                pointsCalculationService.calculatePointsForMatch(updated);
+            }
         }
+
+        log.info("[Scheduler] Tick done │ polled={} broadcasts={} failed={}",
+                polled, changed, failed);
     }
 }

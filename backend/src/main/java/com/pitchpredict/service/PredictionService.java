@@ -4,6 +4,7 @@ import com.pitchpredict.dto.PredictionDTO;
 import com.pitchpredict.entity.Match;
 import com.pitchpredict.entity.Prediction;
 import com.pitchpredict.entity.User;
+import com.pitchpredict.enums.MatchStatus;
 import com.pitchpredict.exception.ApiException;
 import com.pitchpredict.repository.MatchRepository;
 import com.pitchpredict.repository.PredictionRepository;
@@ -12,6 +13,7 @@ import com.pitchpredict.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 
@@ -19,18 +21,28 @@ import java.util.Optional;
 @RequiredArgsConstructor
 public class PredictionService {
 
+    /** Must match MatchService.PREDICTION_CLOSE_MINUTES */
+    private static final int CLOSE_BEFORE_KICKOFF_MINUTES = 5;
+
     private final PredictionRepository predictionRepository;
     private final MatchRepository matchRepository;
     private final RoomMemberRepository roomMemberRepository;
     private final UserRepository userRepository;
 
     public PredictionDTO submitPrediction(Long userId, Long matchId, Long eventId,
-                                           Long roomId, int homeScore, int awayScore) {
+                                          Long roomId, int homeScore, int awayScore) {
         Match match = matchRepository.findById(matchId)
                 .orElseThrow(() -> ApiException.notFound("Match not found"));
 
-        if (!match.getPredictionOpen()) {
-            throw ApiException.badRequest("Prediction window is closed for this match");
+        // Dynamic prediction window check — backend is the authority.
+        // The DB no longer stores a predictionOpen flag.
+        if (match.getStatus() != MatchStatus.SCHEDULED) {
+            throw ApiException.badRequest("Predictions are not accepted for matches that are live or finished");
+        }
+
+        LocalDateTime deadline = match.getMatchDate().minusMinutes(CLOSE_BEFORE_KICKOFF_MINUTES);
+        if (!LocalDateTime.now().isBefore(deadline)) {
+            throw ApiException.badRequest("Prediction window is closed — submissions end 5 minutes before kick-off");
         }
 
         if (!roomMemberRepository.existsByRoomIdAndUserId(roomId, userId)) {
@@ -72,15 +84,19 @@ public class PredictionService {
 
         List<Prediction> allPreds = predictionRepository.findByMatchIdAndRoomId(matchId, roomId);
 
-        if (match.getPredictionOpen()) {
+        // Prediction window is computed dynamically
+        boolean windowOpen = match.getStatus() == MatchStatus.SCHEDULED
+                && LocalDateTime.now().isBefore(
+                        match.getMatchDate().minusMinutes(CLOSE_BEFORE_KICKOFF_MINUTES));
+
+        // If window is still open, only reveal other predictions if current user has predicted
+        if (windowOpen) {
             boolean userHasPredicted = allPreds.stream()
                     .anyMatch(p -> p.getUserId().equals(currentUserId));
-            if (userHasPredicted) {
-                return allPreds.stream().map(this::toDTO).toList();
-            }
-            return List.of();
+            if (!userHasPredicted) return List.of();
         }
 
+        // Window closed (match live, finished, or within 5 min) → show everyone's predictions
         return allPreds.stream().map(this::toDTO).toList();
     }
 

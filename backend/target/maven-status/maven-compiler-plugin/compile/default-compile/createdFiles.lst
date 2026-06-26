@@ -8,6 +8,7 @@ com\pitchpredict\dto\EventDTO$EventDTOBuilder.class
 com\pitchpredict\dto\RoomDTO$RoomDTOBuilder.class
 com\pitchpredict\enums\MatchStatus.class
 com\pitchpredict\dto\LoginRequest.class
+com\pitchpredict\config\WebSocketConfig.class
 com\pitchpredict\service\PredictionService.class
 com\pitchpredict\entity\Room$RoomBuilder.class
 com\pitchpredict\service\LeaderboardService.class
@@ -15,6 +16,7 @@ com\pitchpredict\dto\SignupRequest.class
 com\pitchpredict\entity\User$UserBuilder.class
 com\pitchpredict\config\SecurityConfig.class
 com\pitchpredict\dto\EventDTO.class
+com\pitchpredict\dto\RoomMemberDTO$RoomMemberDTOBuilder.class
 com\pitchpredict\controller\EventController.class
 com\pitchpredict\service\FootballDataService.class
 com\pitchpredict\dto\RoomDTO.class
@@ -30,6 +32,7 @@ com\pitchpredict\security\UserDetailsServiceImpl.class
 com\pitchpredict\enums\EventStatus.class
 com\pitchpredict\dto\AuthResponse$AuthResponseBuilder.class
 com\pitchpredict\dto\PredictionDTO.class
+com\pitchpredict\dto\RoomMemberDTO.class
 com\pitchpredict\exception\ApiException.class
 com\pitchpredict\service\EventService.class
 com\pitchpredict\controller\RoomController.class

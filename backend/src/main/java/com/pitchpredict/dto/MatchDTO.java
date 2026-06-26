@@ -26,6 +26,13 @@ public class MatchDTO {
     private String groupName;
     private String venue;
     private String status;
+
+    /**
+     * Computed dynamically in MatchService.toDTO().
+     * True when: status == SCHEDULED and now < matchDate - 5 minutes.
+     * Never stored in the database.
+     */
     private Boolean predictionOpen;
+
     private List<MatchGoalDTO> goals;
 }

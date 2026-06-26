@@ -1,6 +1,7 @@
 C:\Users\ishan\OneDrive\Documents\Desktop\pitchPredict-main\pitchPredict-main\backend\src\main\java\com\pitchpredict\config\CorsConfig.java
 C:\Users\ishan\OneDrive\Documents\Desktop\pitchPredict-main\pitchPredict-main\backend\src\main\java\com\pitchpredict\config\DataInitializer.java
 C:\Users\ishan\OneDrive\Documents\Desktop\pitchPredict-main\pitchPredict-main\backend\src\main\java\com\pitchpredict\config\SecurityConfig.java
+C:\Users\ishan\OneDrive\Documents\Desktop\pitchPredict-main\pitchPredict-main\backend\src\main\java\com\pitchpredict\config\WebSocketConfig.java
 C:\Users\ishan\OneDrive\Documents\Desktop\pitchPredict-main\pitchPredict-main\backend\src\main\java\com\pitchpredict\controller\AdminController.java
 C:\Users\ishan\OneDrive\Documents\Desktop\pitchPredict-main\pitchPredict-main\backend\src\main\java\com\pitchpredict\controller\AuthController.java
 C:\Users\ishan\OneDrive\Documents\Desktop\pitchPredict-main\pitchPredict-main\backend\src\main\java\com\pitchpredict\controller\EventController.java
@@ -15,6 +16,7 @@ C:\Users\ishan\OneDrive\Documents\Desktop\pitchPredict-main\pitchPredict-main\ba
 C:\Users\ishan\OneDrive\Documents\Desktop\pitchPredict-main\pitchPredict-main\backend\src\main\java\com\pitchpredict\dto\MatchGoalDTO.java
 C:\Users\ishan\OneDrive\Documents\Desktop\pitchPredict-main\pitchPredict-main\backend\src\main\java\com\pitchpredict\dto\PredictionDTO.java
 C:\Users\ishan\OneDrive\Documents\Desktop\pitchPredict-main\pitchPredict-main\backend\src\main\java\com\pitchpredict\dto\RoomDTO.java
+C:\Users\ishan\OneDrive\Documents\Desktop\pitchPredict-main\pitchPredict-main\backend\src\main\java\com\pitchpredict\dto\RoomMemberDTO.java
 C:\Users\ishan\OneDrive\Documents\Desktop\pitchPredict-main\pitchPredict-main\backend\src\main\java\com\pitchpredict\dto\SignupRequest.java
 C:\Users\ishan\OneDrive\Documents\Desktop\pitchPredict-main\pitchPredict-main\backend\src\main\java\com\pitchpredict\entity\Event.java
 C:\Users\ishan\OneDrive\Documents\Desktop\pitchPredict-main\pitchPredict-main\backend\src\main\java\com\pitchpredict\entity\Match.java
