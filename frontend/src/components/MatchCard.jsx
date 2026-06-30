@@ -55,12 +55,21 @@ export default function MatchCard({ match, onClick, children }) {
     return () => clearInterval(id)
   }, [])
 
-  const isLive      = match.status === 'LIVE'
   const isFinished  = match.status === 'FINISHED'
   const isPostponed = match.status === 'POSTPONED'
   const isCancelled = match.status === 'CANCELLED'
   const isScheduled = match.status === 'SCHEDULED'
-  const hasScore    = (isLive || isFinished) && match.homeScore !== null
+
+  // The football API doesn't flip a match to LIVE exactly at kick-off — there's a
+  // lag before the first poll returns IN_PLAY. To avoid showing a stale "VS / kickoff
+  // time" card after kick-off has passed, optimistically treat a SCHEDULED match whose
+  // kick-off time is in the past as LIVE 0-0. Real status/scores still arrive via
+  // WebSocket and override this the moment the backend broadcasts them.
+  const kickoffPassed = isScheduled && new Date(match.matchDate).getTime() <= Date.now()
+  const isLive      = match.status === 'LIVE' || kickoffPassed
+  const hasScore    = isLive || (isFinished && match.homeScore !== null)
+  const displayHomeScore = match.homeScore ?? 0
+  const displayAwayScore = match.awayScore ?? 0
 
   // predictionOpen is computed server-side but we also mirror it here
   // so the countdown only shows when the window is actually open
@@ -135,11 +144,11 @@ export default function MatchCard({ match, onClick, children }) {
           {hasScore ? (
             <div className="flex items-center gap-1.5 sm:gap-2">
               <span className={`text-2xl sm:text-3xl font-black tabular-nums leading-none ${isLive ? 'text-white' : 'text-white/90'}`}>
-                {match.homeScore}
+                {displayHomeScore}
               </span>
               <span className="text-base sm:text-lg font-bold text-white/20 leading-none">:</span>
               <span className={`text-2xl sm:text-3xl font-black tabular-nums leading-none ${isLive ? 'text-white' : 'text-white/90'}`}>
-                {match.awayScore}
+                {displayAwayScore}
               </span>
             </div>
           ) : (

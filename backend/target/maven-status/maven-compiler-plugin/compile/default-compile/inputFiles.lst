@@ -18,6 +18,8 @@ C:\Users\ishan\OneDrive\Documents\Desktop\pitchPredict-main\pitchPredict-main\ba
 C:\Users\ishan\OneDrive\Documents\Desktop\pitchPredict-main\pitchPredict-main\backend\src\main\java\com\pitchpredict\dto\RoomDTO.java
 C:\Users\ishan\OneDrive\Documents\Desktop\pitchPredict-main\pitchPredict-main\backend\src\main\java\com\pitchpredict\dto\RoomMemberDTO.java
 C:\Users\ishan\OneDrive\Documents\Desktop\pitchPredict-main\pitchPredict-main\backend\src\main\java\com\pitchpredict\dto\SignupRequest.java
+C:\Users\ishan\OneDrive\Documents\Desktop\pitchPredict-main\pitchPredict-main\backend\src\main\java\com\pitchpredict\dto\StandingRowDTO.java
+C:\Users\ishan\OneDrive\Documents\Desktop\pitchPredict-main\pitchPredict-main\backend\src\main\java\com\pitchpredict\dto\StandingsGroupDTO.java
 C:\Users\ishan\OneDrive\Documents\Desktop\pitchPredict-main\pitchPredict-main\backend\src\main\java\com\pitchpredict\dto\WebSocketEvent.java
 C:\Users\ishan\OneDrive\Documents\Desktop\pitchPredict-main\pitchPredict-main\backend\src\main\java\com\pitchpredict\entity\Event.java
 C:\Users\ishan\OneDrive\Documents\Desktop\pitchPredict-main\pitchPredict-main\backend\src\main\java\com\pitchpredict\entity\Match.java

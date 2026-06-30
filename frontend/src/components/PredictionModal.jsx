@@ -145,18 +145,16 @@ export default function PredictionModal({ match, roomId, eventId, existing, onCl
 
             <div className="flex items-center gap-3 px-4">
               <input
-                type="number" min={0} max={20}
+                type="text" inputMode="numeric" pattern="[0-9]*"
                 value={homeScore}
-                placeholder="0"
                 onChange={(e) => setHomeScore(clampScore(e.target.value))}
                 disabled={!canPredict}
                 className="w-16 h-16 bg-white/5 border border-white/10 rounded-xl text-center text-3xl font-black text-white focus:border-primary/50 focus:ring-2 focus:ring-primary/20 outline-none disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
               />
               <span className="text-2xl font-bold text-gray-500">:</span>
               <input
-                type="number" min={0} max={20}
+                type="text" inputMode="numeric" pattern="[0-9]*"
                 value={awayScore}
-                placeholder="0"
                 onChange={(e) => setAwayScore(clampScore(e.target.value))}
                 disabled={!canPredict}
                 className="w-16 h-16 bg-white/5 border border-white/10 rounded-xl text-center text-3xl font-black text-white focus:border-primary/50 focus:ring-2 focus:ring-primary/20 outline-none disabled:opacity-50 disabled:cursor-not-allowed transition-colors"

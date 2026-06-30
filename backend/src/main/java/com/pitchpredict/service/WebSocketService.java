@@ -68,6 +68,7 @@ public class WebSocketService {
                     .type(type)
                     .payload(payload)
                     .build();
+            log.info("[WS] PUSH → {} │ type={}", destination, type);
             messagingTemplate.convertAndSend(destination, event);
         } catch (Exception e) {
             log.warn("[WS] Failed to send {} to {}: {}", type, destination, e.getMessage());

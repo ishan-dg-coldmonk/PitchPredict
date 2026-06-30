@@ -6,11 +6,12 @@ import Navbar from '../components/Navbar'
 import MatchCard from '../components/MatchCard'
 import FeaturedMatchCard from '../components/FeaturedMatchCard'
 import LeaderboardTable from '../components/LeaderboardTable'
+import StandingsTable from '../components/StandingsTable'
 import PredictionModal from '../components/PredictionModal'
 import LiveIndicator from '../components/LiveIndicator'
 import { useAuth } from '../context/AuthContext'
 import { useWebSocket } from '../context/WebSocketContext'
-import { getESTDayKey, getDayLabelEST, formatTimeIST, todayESTKey } from '../utils/helpers'
+import { getESTDayKey, getDayLabelEST, formatTimeIST, todayESTKey, effectiveStatus } from '../utils/helpers'
 import API from '../api/axios'
 
 // ── animation helpers ────────────────────────────────────────────────────────
@@ -27,12 +28,14 @@ const fade = {
   exit:    { opacity: 0, transition: { duration: 0.1 } },
 }
 
-function pickFeatured(matches) {
-  const now  = new Date()
-  const live = matches.filter((m) => m.status === 'LIVE')
-  if (live.length) return live[0]
+function pickFeatured(matches, nowMs) {
+  // Live (incl. optimistically-live just-kicked-off matches) takes priority.
+  const live = matches.filter((m) => effectiveStatus(m, nowMs) === 'LIVE')
+  if (live.length) {
+    return [...live].sort((a, b) => new Date(a.matchDate) - new Date(b.matchDate))[0]
+  }
   const any = matches
-    .filter((m) => m.status === 'SCHEDULED' && new Date(m.matchDate) > now)
+    .filter((m) => m.status === 'SCHEDULED' && new Date(m.matchDate).getTime() > nowMs)
     .sort((a, b) => new Date(a.matchDate) - new Date(b.matchDate))
   return any[0] ?? null
 }
@@ -139,6 +142,8 @@ export default function RoomDetailPage() {
   const [event, setEvent]             = useState(null)
   const [matches, setMatches]         = useState([])
   const [leaderboard, setLeaderboard] = useState([])
+  const [standings, setStandings]         = useState(null)   // null = not yet loaded
+  const [standingsLoading, setStandingsLoading] = useState(false)
   const [predictions, setPredictions] = useState({})
   const [mainTab, setMainTab]         = useState('matches')
   const [matchTab, setMatchTab]       = useState('upcoming')
@@ -150,8 +155,17 @@ export default function RoomDetailPage() {
   // Keep eventId in a ref so WebSocket effect can read it without re-subscribing
   const eventIdRef = useRef(null)
 
+  // Wall-clock tick (every 20s) so kick-off-based derived values (featured pick,
+  // live count, "today" strip) re-evaluate when a match crosses kick-off even
+  // before the WebSocket flips its status.
+  const [now, setNow] = useState(() => Date.now())
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 20000)
+    return () => clearInterval(id)
+  }, [])
+
   // ── derived ──────────────────────────────────────────────────────────────
-  const featuredMatch   = useMemo(() => pickFeatured(matches), [matches])
+  const featuredMatch   = useMemo(() => pickFeatured(matches, now), [matches, now])
   const upcomingMatches = useMemo(
     () => matches.filter((m) => m.status !== 'FINISHED' && m.status !== 'CANCELLED' && m.status !== 'POSTPONED'),
     [matches]
@@ -164,15 +178,15 @@ export default function RoomDetailPage() {
   const todayMatches = useMemo(() => {
     const key = todayESTKey()
     return upcomingMatches.filter(
-      (m) => getESTDayKey(m.matchDate) === key && m.status === 'SCHEDULED'
+      (m) => getESTDayKey(m.matchDate) === key && effectiveStatus(m, now) === 'SCHEDULED'
     )
-  }, [upcomingMatches])
+  }, [upcomingMatches, now])
 
   const groupedUpcoming = useMemo(() => groupByESTDay(upcomingMatches), [upcomingMatches])
   const groupedFinished = useMemo(() => groupByESTDay(finishedMatches), [finishedMatches])
-  const liveCount       = useMemo(() => matches.filter((m) => m.status === 'LIVE').length, [matches])
+  const liveCount       = useMemo(() => matches.filter((m) => effectiveStatus(m, now) === 'LIVE').length, [matches, now])
   const finishedCount   = finishedMatches.length
-  const upcomingCount   = upcomingMatches.filter((m) => m.status === 'SCHEDULED').length
+  const upcomingCount   = upcomingMatches.filter((m) => effectiveStatus(m, now) === 'SCHEDULED').length
 
   // ── Initial REST load ─────────────────────────────────────────────────────
   const loadData = useCallback(async () => {
@@ -264,6 +278,23 @@ export default function RoomDetailPage() {
       unsubLeaderboard()
     }
   }, [loading, subscribe, roomId]) // re-run only after initial load completes
+
+  // ── Standings: lazy-load the first time the tab is opened ──────────────────
+  // Backend caches for ~3 min, so re-opening the tab won't spam the football API.
+  useEffect(() => {
+    if (mainTab !== 'standings') return
+    if (standings !== null || standingsLoading) return
+    if (!event?.id) return
+
+    setStandingsLoading(true)
+    API.get(`/events/${event.id}/standings`)
+      .then((r) => setStandings(r.data))
+      .catch((err) => {
+        console.error('Failed to load standings:', err)
+        setStandings([]) // empty → component shows the "not available" message
+      })
+      .finally(() => setStandingsLoading(false))
+  }, [mainTab, event?.id, standings, standingsLoading])
 
   // ── Prediction view eligibility ───────────────────────────────────────────
   const canViewPredictions = (match) => {
@@ -365,7 +396,7 @@ export default function RoomDetailPage() {
 
         {/* Main tabs */}
         <div className="flex flex-wrap gap-1 mb-6 sm:mb-8 bg-white/[0.03] p-1 rounded-xl w-fit">
-          {['matches', 'leaderboard'].map((t) => (
+          {['matches', 'leaderboard', 'standings'].map((t) => (
             <button
               key={t}
               onClick={() => setMainTab(t)}
@@ -393,12 +424,12 @@ export default function RoomDetailPage() {
                   {featuredMatch && (
                     <div className="mb-6 sm:mb-8">
                       <div className="flex items-center gap-2 mb-3">
-                        {featuredMatch.status === 'LIVE'
+                        {effectiveStatus(featuredMatch, now) === 'LIVE'
                           ? <LiveIndicator />
                           : <span className="w-2 h-2 rounded-full bg-primary/60" />
                         }
                         <span className="text-xs font-bold uppercase tracking-[0.15em] text-gray-400">
-                          {featuredMatch.status === 'LIVE' ? 'Live Now' : 'Next Up'}
+                          {effectiveStatus(featuredMatch, now) === 'LIVE' ? 'Live Now' : 'Next Up'}
                         </span>
                       </div>
                       <FeaturedMatchCard
@@ -580,6 +611,19 @@ export default function RoomDetailPage() {
                 roomName={room?.name}
                 prize={event?.prize}
               />
+            </motion.div>
+          )}
+
+          {/* ════════ STANDINGS TAB ════════ */}
+          {mainTab === 'standings' && (
+            <motion.div key="standings" {...fade}>
+              {standingsLoading && standings === null ? (
+                <div className="py-16 flex justify-center">
+                  <div className="w-8 h-8 border-4 border-primary/30 border-t-primary rounded-full animate-spin" />
+                </div>
+              ) : (
+                <StandingsTable groups={standings} />
+              )}
             </motion.div>
           )}
 

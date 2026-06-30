@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
 import { MapPin, Clock } from 'lucide-react'
 import LiveIndicator from './LiveIndicator'
-import { formatDateTimeIST, timeUntil } from '../utils/helpers'
+import { formatDateTimeIST, timeUntil, isKickoffPassed } from '../utils/helpers'
 
 export default function FeaturedMatchCard({ match, onClick }) {
   if (!match) return null
@@ -14,9 +14,12 @@ export default function FeaturedMatchCard({ match, onClick }) {
     return () => clearInterval(id)
   }, [])
 
-  const isLive     = match.status === 'LIVE'
+  // Optimistically treat a SCHEDULED match past kick-off as LIVE 0-0 (see helpers).
+  const isLive     = match.status === 'LIVE' || isKickoffPassed(match)
   const isFinished = match.status === 'FINISHED'
-  const hasScore   = (isLive || isFinished) && match.homeScore !== null
+  const hasScore   = isLive || (isFinished && match.homeScore !== null)
+  const displayHomeScore = match.homeScore ?? 0
+  const displayAwayScore = match.awayScore ?? 0
 
   return (
     <motion.div
@@ -82,9 +85,9 @@ export default function FeaturedMatchCard({ match, onClick }) {
           {hasScore ? (
             <>
               <div className="flex items-center gap-2 sm:gap-3">
-                <span className="text-3xl sm:text-5xl font-black tabular-nums leading-none text-white">{match.homeScore}</span>
+                <span className="text-3xl sm:text-5xl font-black tabular-nums leading-none text-white">{displayHomeScore}</span>
                 <span className="text-lg sm:text-2xl font-bold text-white/20">:</span>
-                <span className="text-3xl sm:text-5xl font-black tabular-nums leading-none text-white">{match.awayScore}</span>
+                <span className="text-3xl sm:text-5xl font-black tabular-nums leading-none text-white">{displayAwayScore}</span>
               </div>
               {isLive && (
                 <div className="mt-2 flex items-center gap-1.5 text-red-400 text-xs font-bold">

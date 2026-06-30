@@ -2,7 +2,9 @@ package com.pitchpredict.controller;
 
 import com.pitchpredict.dto.EventDTO;
 import com.pitchpredict.dto.MatchDTO;
+import com.pitchpredict.dto.StandingsGroupDTO;
 import com.pitchpredict.service.EventService;
+import com.pitchpredict.service.FootballDataService;
 import com.pitchpredict.service.MatchService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -19,6 +21,7 @@ public class EventController {
 
     private final EventService eventService;
     private final MatchService matchService;
+    private final FootballDataService footballDataService;
 
     @GetMapping
     public ResponseEntity<List<EventDTO>> getAllEvents() {
@@ -42,5 +45,13 @@ public class EventController {
         List<MatchDTO> matches = matchService.getMatchesByEvent(id);
         log.info("[API] GET /api/events/{}/matches ✓ - {} match(es) returned", id, matches.size());
         return ResponseEntity.ok(matches);
+    }
+
+    @GetMapping("/{id}/standings")
+    public ResponseEntity<List<StandingsGroupDTO>> getEventStandings(@PathVariable Long id) {
+        log.info("[API] GET /api/events/{}/standings", id);
+        List<StandingsGroupDTO> standings = footballDataService.getStandings(id);
+        log.info("[API] GET /api/events/{}/standings ✓ - {} group(s) returned", id, standings.size());
+        return ResponseEntity.ok(standings);
     }
 }

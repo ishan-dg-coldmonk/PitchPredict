@@ -3,6 +3,8 @@ package com.pitchpredict.service;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.pitchpredict.dto.MatchGoalDTO;
+import com.pitchpredict.dto.StandingRowDTO;
+import com.pitchpredict.dto.StandingsGroupDTO;
 import com.pitchpredict.entity.Event;
 import com.pitchpredict.entity.Match;
 import com.pitchpredict.enums.MatchStatus;
@@ -19,6 +21,7 @@ import org.springframework.web.client.RestTemplate;
 import java.time.*;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 
 @Service
 @RequiredArgsConstructor
@@ -36,6 +39,90 @@ public class FootballDataService {
     private String baseUrl;
 
     private final RestTemplate restTemplate = new RestTemplate();
+
+    // ── Standings: on-demand fetch with a short-lived in-memory cache ─────────
+    //
+    // Standings change only when a match finishes (a few times a day), but page
+    // loads can be frequent — and we share a 10 req/min budget with the live
+    // score scheduler. So we cache per competition for STANDINGS_TTL_MS and only
+    // hit the API when the cache is cold or stale.
+
+    private static final long STANDINGS_TTL_MS = 3 * 60 * 1000; // 3 minutes
+
+    private record CachedStandings(List<StandingsGroupDTO> groups, long fetchedAt) {}
+
+    private final Map<String, CachedStandings> standingsCache = new ConcurrentHashMap<>();
+
+    /**
+     * Returns group standings for an event's competition.
+     * Cached; serves the last good value if a refresh fails.
+     */
+    public List<StandingsGroupDTO> getStandings(Long eventId) {
+        Event event = eventRepository.findById(eventId)
+                .orElseThrow(() -> ApiException.notFound("Event not found"));
+
+        String compId = event.getApiCompId();
+        if (compId == null || compId.isBlank()) {
+            throw ApiException.badRequest("Event has no API competition ID configured");
+        }
+
+        CachedStandings cached = standingsCache.get(compId);
+        if (cached != null && System.currentTimeMillis() - cached.fetchedAt() < STANDINGS_TTL_MS) {
+            log.debug("[Standings] cache hit for comp {}", compId);
+            return cached.groups();
+        }
+
+        try {
+            List<StandingsGroupDTO> fresh = fetchStandings(compId);
+            standingsCache.put(compId, new CachedStandings(fresh, System.currentTimeMillis()));
+            log.info("[Standings] fetched comp {} → {} group(s)", compId, fresh.size());
+            return fresh;
+        } catch (Exception e) {
+            log.warn("[Standings] fetch failed for comp {}: {}", compId, e.getMessage());
+            if (cached != null) return cached.groups(); // serve stale rather than fail
+            throw ApiException.badRequest("Failed to fetch standings: " + e.getMessage());
+        }
+    }
+
+    private List<StandingsGroupDTO> fetchStandings(String apiCompId) throws Exception {
+        HttpHeaders headers = new HttpHeaders();
+        headers.set("X-Auth-Token", apiKey);
+        HttpEntity<String> entity = new HttpEntity<>(headers);
+
+        String url = baseUrl + "/competitions/" + apiCompId + "/standings";
+        ResponseEntity<String> response = restTemplate.exchange(url, HttpMethod.GET, entity, String.class);
+        JsonNode root = objectMapper.readTree(response.getBody());
+
+        List<StandingsGroupDTO> groups = new ArrayList<>();
+        for (JsonNode s : root.path("standings")) {
+            // The API returns TOTAL/HOME/AWAY variants per group — we only want TOTAL.
+            if (!"TOTAL".equals(s.path("type").asText())) continue;
+
+            String group = s.path("group").isNull() ? null : s.path("group").asText(null);
+
+            List<StandingRowDTO> table = new ArrayList<>();
+            for (JsonNode r : s.path("table")) {
+                JsonNode team = r.path("team");
+                table.add(StandingRowDTO.builder()
+                        .position(r.path("position").asInt())
+                        .teamId(team.path("id").asLong())
+                        .teamName(team.path("name").asText(null))
+                        .teamTla(team.path("tla").asText(null))
+                        .teamCrest(team.path("crest").asText(null))
+                        .playedGames(r.path("playedGames").asInt())
+                        .won(r.path("won").asInt())
+                        .draw(r.path("draw").asInt())
+                        .lost(r.path("lost").asInt())
+                        .points(r.path("points").asInt())
+                        .goalsFor(r.path("goalsFor").asInt())
+                        .goalsAgainst(r.path("goalsAgainst").asInt())
+                        .goalDifference(r.path("goalDifference").asInt())
+                        .build());
+            }
+            groups.add(StandingsGroupDTO.builder().group(group).table(table).build());
+        }
+        return groups;
+    }
 
     // ── Admin: bulk sync all matches for an event ────────────────────────────
 

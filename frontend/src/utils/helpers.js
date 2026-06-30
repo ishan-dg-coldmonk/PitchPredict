@@ -56,6 +56,23 @@ export function timeUntil(dateStr) {
   return `${mins}m`
 }
 
+// ── Optimistic live state ─────────────────────────────────────────────────────
+//
+// The football API lags a minute or two before flipping a match to IN_PLAY at
+// kick-off, so a just-started match still reports SCHEDULED for a short while.
+// To avoid a stale "VS / kickoff time" UI, we treat a SCHEDULED match whose
+// kick-off time has passed as LIVE (0-0). Real status/scores arriving via
+// WebSocket override this the moment the backend broadcasts them.
+
+export function isKickoffPassed(match, nowMs = Date.now()) {
+  return match?.status === 'SCHEDULED' && new Date(match.matchDate).getTime() <= nowMs
+}
+
+/** Match status as the UI should treat it, accounting for the optimistic flip. */
+export function effectiveStatus(match, nowMs = Date.now()) {
+  return isKickoffPassed(match, nowMs) ? 'LIVE' : match?.status
+}
+
 // ── EST day grouping ──────────────────────────────────────────────────────────
 
 /** Returns the EST calendar day key "YYYY-MM-DD" for grouping matches */

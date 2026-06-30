@@ -30,6 +30,10 @@ public class SecurityConfig {
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers("/api/auth/**").permitAll()
                 .requestMatchers("/h2-console/**").permitAll()
+                // Spring forwards unhandled exceptions to /error to render a body.
+                // Without permitting it, that ERROR dispatch is itself blocked as an
+                // unauthenticated request, masking the real error with AccessDenied.
+                .requestMatchers("/error").permitAll()
                 // WebSocket handshake endpoints — must be open so the browser
                 // can upgrade the HTTP connection before sending credentials
                 .requestMatchers("/ws/**").permitAll()
