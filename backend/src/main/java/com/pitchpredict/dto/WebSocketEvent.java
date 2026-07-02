@@ -13,6 +13,7 @@ import lombok.NoArgsConstructor;
  *   MATCH_LIVE          — status flipped to LIVE
  *   MATCH_FINISHED      — status flipped to FINISHED
  *   LEADERBOARD_UPDATED — points recalculated after a match finishes
+ *   EVENT_UPDATED       — event status changed (e.g. activated / completed)
  */
 @Data @NoArgsConstructor @AllArgsConstructor @Builder
 public class WebSocketEvent {
@@ -21,7 +22,8 @@ public class WebSocketEvent {
         MATCH_UPDATED,
         MATCH_LIVE,
         MATCH_FINISHED,
-        LEADERBOARD_UPDATED
+        LEADERBOARD_UPDATED,
+        EVENT_UPDATED
     }
 
     private Type type;

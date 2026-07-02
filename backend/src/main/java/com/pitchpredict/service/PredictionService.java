@@ -1,11 +1,14 @@
 package com.pitchpredict.service;
 
 import com.pitchpredict.dto.PredictionDTO;
+import com.pitchpredict.entity.Event;
 import com.pitchpredict.entity.Match;
 import com.pitchpredict.entity.Prediction;
 import com.pitchpredict.entity.User;
+import com.pitchpredict.enums.EventStatus;
 import com.pitchpredict.enums.MatchStatus;
 import com.pitchpredict.exception.ApiException;
+import com.pitchpredict.repository.EventRepository;
 import com.pitchpredict.repository.MatchRepository;
 import com.pitchpredict.repository.PredictionRepository;
 import com.pitchpredict.repository.RoomMemberRepository;
@@ -31,6 +34,7 @@ public class PredictionService {
     private final MatchRepository matchRepository;
     private final RoomMemberRepository roomMemberRepository;
     private final UserRepository userRepository;
+    private final EventRepository eventRepository;
 
     public PredictionDTO submitPrediction(Long userId, Long matchId, Long eventId,
                                           Long roomId, int homeScore, int awayScore,
@@ -40,6 +44,13 @@ public class PredictionService {
 
         Match match = matchRepository.findById(matchId)
                 .orElseThrow(() -> ApiException.notFound("Match not found"));
+
+        // A completed event locks all predictions, regardless of individual match state.
+        Event event = eventRepository.findById(match.getEventId()).orElse(null);
+        if (event != null && event.getStatus() == EventStatus.COMPLETED) {
+            log.warn("[Prediction] REJECTED - event completed - userId={} matchId={}", userId, matchId);
+            throw ApiException.badRequest("This event has ended — predictions are closed");
+        }
 
         // Dynamic prediction window check — backend is the authority.
         // The DB no longer stores a predictionOpen flag.

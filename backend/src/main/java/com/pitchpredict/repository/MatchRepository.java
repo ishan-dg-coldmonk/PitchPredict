@@ -34,6 +34,8 @@ public interface MatchRepository extends JpaRepository<Match, Long> {
     @Query("SELECT m FROM Match m " +
            "WHERE m.externalMatchId IS NOT NULL " +
            "AND m.status NOT IN ('FINISHED', 'CANCELLED', 'POSTPONED') " +
+           "AND m.eventId NOT IN " +
+           "    (SELECT e.id FROM Event e WHERE e.status = com.pitchpredict.enums.EventStatus.COMPLETED) " +
            "AND m.matchDate BETWEEN :from AND :to")
     List<Match> findMatchesInActiveWindow(
             @Param("from") LocalDateTime from,

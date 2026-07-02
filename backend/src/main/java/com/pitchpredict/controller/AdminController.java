@@ -124,6 +124,7 @@ public class AdminController {
     public ResponseEntity<EventDTO> activateEvent(@PathVariable Long id) {
         log.info("[API] POST /api/admin/events/{}/activate", id);
         EventDTO dto = eventService.activateEvent(id);
+        webSocketService.broadcastEventUpdated(dto); // push status live to open clients
         log.info("[API] POST /api/admin/events/{}/activate ✓", id);
         return ResponseEntity.ok(dto);
     }
@@ -132,6 +133,7 @@ public class AdminController {
     public ResponseEntity<EventDTO> finishEvent(@PathVariable Long id) {
         log.info("[API] POST /api/admin/events/{}/finish", id);
         EventDTO dto = eventService.finishEvent(id);
+        webSocketService.broadcastEventUpdated(dto); // push "completed" live to open clients
         log.info("[API] POST /api/admin/events/{}/finish ✓", id);
         return ResponseEntity.ok(dto);
     }

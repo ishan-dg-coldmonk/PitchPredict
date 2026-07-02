@@ -1,5 +1,6 @@
 package com.pitchpredict.service;
 
+import com.pitchpredict.dto.EventDTO;
 import com.pitchpredict.dto.LeaderboardEntry;
 import com.pitchpredict.dto.MatchDTO;
 import com.pitchpredict.dto.WebSocketEvent;
@@ -49,6 +50,16 @@ public class WebSocketService {
                 matchDTO.getAwayScore(), matchDTO.getAwayTeam());
         send("/topic/matches/" + matchDTO.getEventId(),
                 WebSocketEvent.Type.MATCH_FINISHED, matchDTO);
+    }
+
+    // ── Event broadcasts ─────────────────────────────────────────────────────
+
+    /** Pushes an event status change (e.g. completed) to everyone in that event. */
+    public void broadcastEventUpdated(EventDTO eventDTO) {
+        log.info("[WS] EVENT_UPDATED → /topic/events/{} │ status={}",
+                eventDTO.getId(), eventDTO.getStatus());
+        send("/topic/events/" + eventDTO.getId(),
+                WebSocketEvent.Type.EVENT_UPDATED, eventDTO);
     }
 
     // ── Leaderboard broadcasts ───────────────────────────────────────────────
