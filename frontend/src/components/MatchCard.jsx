@@ -142,15 +142,24 @@ export default function MatchCard({ match, onClick, children }) {
         {/* Score / time */}
         <div className="flex flex-col items-center justify-center min-w-[80px] sm:min-w-[110px] px-1 sm:px-2">
           {hasScore ? (
-            <div className="flex items-center gap-1.5 sm:gap-2">
-              <span className={`text-2xl sm:text-3xl font-black tabular-nums leading-none ${isLive ? 'text-white' : 'text-white/90'}`}>
-                {displayHomeScore}
-              </span>
-              <span className="text-base sm:text-lg font-bold text-white/20 leading-none">:</span>
-              <span className={`text-2xl sm:text-3xl font-black tabular-nums leading-none ${isLive ? 'text-white' : 'text-white/90'}`}>
-                {displayAwayScore}
-              </span>
-            </div>
+            <>
+              <div className="flex items-center gap-1.5 sm:gap-2">
+                <span className={`text-2xl sm:text-3xl font-black tabular-nums leading-none ${isLive ? 'text-white' : 'text-white/90'}`}>
+                  {displayHomeScore}
+                </span>
+                <span className="text-base sm:text-lg font-bold text-white/20 leading-none">:</span>
+                <span className={`text-2xl sm:text-3xl font-black tabular-nums leading-none ${isLive ? 'text-white' : 'text-white/90'}`}>
+                  {displayAwayScore}
+                </span>
+              </div>
+              {match.penaltyHome != null ? (
+                <span className="mt-1 text-[9px] font-bold uppercase tracking-wide text-amber-400">
+                  Pens {match.penaltyHome}-{match.penaltyAway}
+                </span>
+              ) : match.duration === 'EXTRA_TIME' ? (
+                <span className="mt-1 text-[9px] font-semibold uppercase tracking-wide text-gray-500">AET</span>
+              ) : null}
+            </>
           ) : (
             <div className="flex flex-col items-center">
               <span className="text-[10px] sm:text-[11px] font-medium text-gray-400 tabular-nums">

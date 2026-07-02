@@ -91,6 +91,9 @@ function AllPredictionsModal({ match, roomId, onClose }) {
             {isLive && <span className="w-1.5 h-1.5 bg-red-500 rounded-full animate-live-blink" />}
             {isLive ? 'Live: ' : 'Final: '}
             {match.homeScore} – {match.awayScore}
+            {match.penaltyHome != null && (
+              <span className="text-amber-400">({match.penaltyHome}-{match.penaltyAway} pens)</span>
+            )}
           </div>
         )}
 
@@ -114,13 +117,18 @@ function AllPredictionsModal({ match, roomId, onClose }) {
                 <div className="flex-1 min-w-0">
                   <div className="text-sm font-semibold text-white truncate">{p.username}</div>
                 </div>
-                <div className="text-xl font-black text-white tabular-nums">
+                <div className="text-xl font-black text-white tabular-nums text-center">
                   {p.predictedHomeScore} : {p.predictedAwayScore}
+                  {p.predictedPenaltyHome != null && (
+                    <span className="block text-[10px] text-amber-400 font-bold leading-tight">
+                      pens {p.predictedPenaltyHome}-{p.predictedPenaltyAway}
+                    </span>
+                  )}
                 </div>
                 <div className="text-right min-w-[50px] sm:min-w-[60px]">
                   <div className="text-accent font-bold text-xs sm:text-sm">{p.points ?? 0} pts</div>
                   <div className="text-[9px] sm:text-[10px] text-gray-500 whitespace-nowrap">
-                    B:{p.basePoints ?? 0} R:{p.outcomeBonus ?? 0} G:{p.gdBonus ?? 0}
+                    B:{p.basePoints ?? 0} R:{p.outcomeBonus ?? 0} G:{p.gdBonus ?? 0}{p.penaltyBonus ? ` P:${p.penaltyBonus}` : ''}
                   </div>
                 </div>
               </div>

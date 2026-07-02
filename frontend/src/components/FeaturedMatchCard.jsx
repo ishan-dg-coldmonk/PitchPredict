@@ -89,6 +89,14 @@ export default function FeaturedMatchCard({ match, onClick }) {
                 <span className="text-lg sm:text-2xl font-bold text-white/20">:</span>
                 <span className="text-3xl sm:text-5xl font-black tabular-nums leading-none text-white">{displayAwayScore}</span>
               </div>
+              {match.penaltyHome != null && (
+                <div className="mt-1.5 text-xs sm:text-sm font-bold uppercase tracking-wide text-amber-400">
+                  Penalties {match.penaltyHome}-{match.penaltyAway}
+                </div>
+              )}
+              {match.penaltyHome == null && match.duration === 'EXTRA_TIME' && (
+                <div className="mt-1.5 text-[11px] font-semibold uppercase tracking-widest text-gray-500">After Extra Time</div>
+              )}
               {isLive && (
                 <div className="mt-2 flex items-center gap-1.5 text-red-400 text-xs font-bold">
                   <span className="w-1.5 h-1.5 bg-red-500 rounded-full animate-live-blink" />

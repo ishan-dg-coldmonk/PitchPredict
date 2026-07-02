@@ -37,6 +37,8 @@ function usePredictionWindow(match) {
 export default function PredictionModal({ match, roomId, eventId, existing, onClose, onSaved }) {
   const [homeScore, setHomeScore] = useState(existing?.predictedHomeScore ?? '')
   const [awayScore, setAwayScore] = useState(existing?.predictedAwayScore ?? '')
+  const [penaltyHome, setPenaltyHome] = useState(existing?.predictedPenaltyHome ?? '')
+  const [penaltyAway, setPenaltyAway] = useState(existing?.predictedPenaltyAway ?? '')
   const [saving, setSaving]       = useState(false)
 
   const { canPredict, minutesLeft, secondsLeft, msUntilClose } = usePredictionWindow(match)
@@ -44,14 +46,23 @@ export default function PredictionModal({ match, roomId, eventId, existing, onCl
   const isFinished = match.status === 'FINISHED'
   const isLive     = match.status === 'LIVE'
 
+  // Knockout ties are decided on penalties, so ask for a shootout prediction.
+  const isKnockout    = !!match.stage && match.stage !== 'GROUP_STAGE'
+  const isTie         = homeScore !== '' && awayScore !== '' && Number(homeScore) === Number(awayScore)
+  const needPenalties = canPredict && isKnockout && isTie
+
   // Sync inputs whenever existing prediction changes
   useEffect(() => {
     if (existing) {
       setHomeScore(existing.predictedHomeScore)
       setAwayScore(existing.predictedAwayScore)
+      setPenaltyHome(existing.predictedPenaltyHome ?? '')
+      setPenaltyAway(existing.predictedPenaltyAway ?? '')
     } else {
       setHomeScore('')
       setAwayScore('')
+      setPenaltyHome('')
+      setPenaltyAway('')
     }
   }, [existing])
 
@@ -62,15 +73,31 @@ export default function PredictionModal({ match, roomId, eventId, existing, onCl
       toast.error('Please enter a score for both teams')
       return
     }
+
+    const body = {
+      matchId: match.id, eventId, roomId,
+      predictedHomeScore: home, predictedAwayScore: away,
+    }
+
+    // A knockout tie needs a shootout prediction (with a winner).
+    if (isKnockout && home === away) {
+      const ph = parseInt(penaltyHome)
+      const pa = parseInt(penaltyAway)
+      if (isNaN(ph) || isNaN(pa)) {
+        toast.error('Enter the penalty shootout score')
+        return
+      }
+      if (ph === pa) {
+        toast.error("A shootout can't end level — pick a winner")
+        return
+      }
+      body.predictedPenaltyHome = ph
+      body.predictedPenaltyAway = pa
+    }
+
     setSaving(true)
     try {
-      await API.post('/predictions', {
-        matchId: match.id,
-        eventId,
-        roomId,
-        predictedHomeScore: home,
-        predictedAwayScore: away,
-      })
+      await API.post('/predictions', body)
       toast.success(existing ? 'Prediction updated!' : 'Prediction saved!')
       onSaved?.()
       onClose()
@@ -167,11 +194,42 @@ export default function PredictionModal({ match, roomId, eventId, existing, onCl
             </div>
           </div>
 
+          {/* Penalty shootout prediction — knockout ties only */}
+          {needPenalties && (
+            <div className="mb-5">
+              <div className="text-[11px] uppercase tracking-wider text-amber-400/90 font-bold mb-2 text-center">
+                Penalty shootout — pick a winner
+              </div>
+              <div className="flex items-center justify-center gap-3">
+                <input
+                  type="text" inputMode="numeric" pattern="[0-9]*"
+                  value={penaltyHome}
+                  onChange={(e) => setPenaltyHome(clampScore(e.target.value))}
+                  className="w-12 h-12 bg-amber-500/5 border border-amber-500/25 rounded-lg text-center text-xl font-black text-amber-300 focus:border-amber-400/60 focus:ring-2 focus:ring-amber-500/20 outline-none transition-colors"
+                />
+                <span className="text-lg font-bold text-gray-500">:</span>
+                <input
+                  type="text" inputMode="numeric" pattern="[0-9]*"
+                  value={penaltyAway}
+                  onChange={(e) => setPenaltyAway(clampScore(e.target.value))}
+                  className="w-12 h-12 bg-amber-500/5 border border-amber-500/25 rounded-lg text-center text-xl font-black text-amber-300 focus:border-amber-400/60 focus:ring-2 focus:ring-amber-500/20 outline-none transition-colors"
+                />
+              </div>
+            </div>
+          )}
+
           {/* Actual score if live/finished */}
           {(isFinished || isLive) && match.homeScore !== null && (
             <div className="bg-white/5 border border-white/10 rounded-xl p-3 mb-4 text-center">
               <div className="text-xs text-gray-400 mb-1">{isLive ? 'Current Score' : 'Final Score'}</div>
               <div className="text-2xl font-black text-white">{match.homeScore} – {match.awayScore}</div>
+              {match.penaltyHome != null ? (
+                <div className="text-xs font-bold text-amber-400 mt-1">
+                  {match.penaltyHome}–{match.penaltyAway} on penalties
+                </div>
+              ) : match.duration === 'EXTRA_TIME' ? (
+                <div className="text-[11px] font-semibold text-gray-500 mt-1 uppercase tracking-widest">After extra time</div>
+              ) : null}
             </div>
           )}
 
@@ -182,11 +240,19 @@ export default function PredictionModal({ match, roomId, eventId, existing, onCl
               <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
                 <span className="text-xl font-black text-white tabular-nums">
                   {existing.predictedHomeScore} : {existing.predictedAwayScore}
+                  {existing.predictedPenaltyHome != null && (
+                    <span className="text-sm text-amber-400 ml-2">
+                      (pens {existing.predictedPenaltyHome}-{existing.predictedPenaltyAway})
+                    </span>
+                  )}
                 </span>
                 <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-gray-400">
                   <span>B <span className="text-white font-bold">{existing.basePoints ?? '—'}</span></span>
                   <span>R <span className="text-white font-bold">{existing.outcomeBonus ?? '—'}</span></span>
                   <span>GD <span className="text-white font-bold">{existing.gdBonus ?? '—'}</span></span>
+                  {existing.predictedPenaltyHome != null && (
+                    <span>P <span className="text-amber-400 font-bold">{existing.penaltyBonus ?? '—'}</span></span>
+                  )}
                   <span className="text-accent font-black">
                     {existing.points != null ? `${existing.points} pts` : 'Pending'}
                   </span>
