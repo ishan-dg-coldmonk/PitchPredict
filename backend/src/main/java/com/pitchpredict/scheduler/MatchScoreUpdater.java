@@ -75,6 +75,8 @@ public class MatchScoreUpdater {
             MatchStatus statusBefore = match.getStatus();
             Integer scoreBefore_home = match.getHomeScore();
             Integer scoreBefore_away = match.getAwayScore();
+            Integer penBefore_home   = match.getPenaltyHome();
+            Integer penBefore_away   = match.getPenaltyAway();
 
             var result = footballDataService.pollSingleMatch(match);
 
@@ -88,9 +90,12 @@ public class MatchScoreUpdater {
 
             MatchStatus statusAfter = updated.getStatus();
             boolean statusChanged = statusBefore != statusAfter;
+            // Also treat a penalty-tally change as a score change so live shootouts push updates.
             boolean scoreChanged  = statusAfter == MatchStatus.LIVE && (
                     !java.util.Objects.equals(scoreBefore_home, updated.getHomeScore()) ||
-                    !java.util.Objects.equals(scoreBefore_away, updated.getAwayScore())
+                    !java.util.Objects.equals(scoreBefore_away, updated.getAwayScore()) ||
+                    !java.util.Objects.equals(penBefore_home, updated.getPenaltyHome()) ||
+                    !java.util.Objects.equals(penBefore_away, updated.getPenaltyAway())
             );
 
             // Build DTO once (predictionOpen computed dynamically inside toDTO)

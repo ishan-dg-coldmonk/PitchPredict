@@ -18,10 +18,13 @@ public class PredictionDTO {
     private Long roomId;
     private Integer predictedHomeScore;
     private Integer predictedAwayScore;
+    private Integer predictedPenaltyHome;
+    private Integer predictedPenaltyAway;
     private Integer points;
     private Integer basePoints;
     private Integer outcomeBonus;
     private Integer gdBonus;
+    private Integer penaltyBonus;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 }

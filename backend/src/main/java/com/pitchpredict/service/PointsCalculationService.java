@@ -56,6 +56,10 @@ public class PointsCalculationService {
         int actualHome = match.getHomeScore();
         int actualAway = match.getAwayScore();
 
+        // A shootout gets a penalty bonus on top of the result points.
+        boolean shootout = "PENALTY_SHOOTOUT".equals(match.getDuration())
+                && match.getPenaltyHome() != null && match.getPenaltyAway() != null;
+
         for (Prediction p : predictions) {
             int predHome = p.getPredictedHomeScore();
             int predAway = p.getPredictedAwayScore();
@@ -65,15 +69,30 @@ public class PointsCalculationService {
             int outcome = getResult(predHome, predAway) == getResult(actualHome, actualAway) ? 4 : 0;
             int gd      = (predHome - predAway) == (actualHome - actualAway) ? 3 : 0;
 
+            // ── Penalty bonus: only when the match went to pens AND the user predicted a
+            //    tie (so they entered a shootout prediction). +5 for the right advancer,
+            //    up to +3 for closeness to the exact shootout scoreline. Max +8.
+            int penaltyBonus = 0;
+            if (shootout && predHome == predAway
+                    && p.getPredictedPenaltyHome() != null && p.getPredictedPenaltyAway() != null) {
+                int actPenH  = match.getPenaltyHome(),  actPenA  = match.getPenaltyAway();
+                int predPenH = p.getPredictedPenaltyHome(), predPenA = p.getPredictedPenaltyAway();
+                int penWinner = Integer.compare(predPenH, predPenA) == Integer.compare(actPenH, actPenA) ? 5 : 0;
+                int penDiff   = Math.abs(predPenH - actPenH) + Math.abs(predPenA - actPenA);
+                int penExact  = Math.max(0, 3 - penDiff);
+                penaltyBonus  = penWinner + penExact;
+            }
+
             p.setBasePoints(base);
             p.setOutcomeBonus(outcome);
             p.setGdBonus(gd);
-            p.setPoints(base + outcome + gd);
+            p.setPenaltyBonus(penaltyBonus);
+            p.setPoints(base + outcome + gd + penaltyBonus);
 
-            log.info("[Points] matchId={} userId={} pred={}:{} actual={}:{} → {}pts",
+            log.info("[Points] matchId={} userId={} pred={}:{} actual={}:{} → {}pts (pen {})",
                     match.getId(), p.getUserId(),
                     predHome, predAway, actualHome, actualAway,
-                    p.getPoints());
+                    p.getPoints(), penaltyBonus);
         }
 
         predictionRepository.saveAll(predictions);

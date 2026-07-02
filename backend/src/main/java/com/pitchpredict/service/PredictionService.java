@@ -33,9 +33,10 @@ public class PredictionService {
     private final UserRepository userRepository;
 
     public PredictionDTO submitPrediction(Long userId, Long matchId, Long eventId,
-                                          Long roomId, int homeScore, int awayScore) {
-        log.info("[Prediction] submitPrediction - userId={} matchId={} roomId={} pred={}:{}",
-                userId, matchId, roomId, homeScore, awayScore);
+                                          Long roomId, int homeScore, int awayScore,
+                                          Integer penaltyHome, Integer penaltyAway) {
+        log.info("[Prediction] submitPrediction - userId={} matchId={} roomId={} pred={}:{} pens={}:{}",
+                userId, matchId, roomId, homeScore, awayScore, penaltyHome, penaltyAway);
 
         Match match = matchRepository.findById(matchId)
                 .orElseThrow(() -> ApiException.notFound("Match not found"));
@@ -60,6 +61,24 @@ public class PredictionService {
             throw ApiException.forbidden("You must join the room before predicting");
         }
 
+        // ── Penalty prediction: required (and only kept) for a tie on a knockout match ──
+        boolean tie      = homeScore == awayScore;
+        boolean knockout = match.getStage() != null && !"GROUP_STAGE".equalsIgnoreCase(match.getStage());
+        Integer penH = null, penA = null;
+        if (tie && knockout) {
+            if (penaltyHome == null || penaltyAway == null) {
+                throw ApiException.badRequest("Predict the penalty shootout score for a knockout tie");
+            }
+            if (penaltyHome < 0 || penaltyAway < 0) {
+                throw ApiException.badRequest("Penalty scores can't be negative");
+            }
+            if (penaltyHome.equals(penaltyAway)) {
+                throw ApiException.badRequest("A shootout can't end level — one team must win on penalties");
+            }
+            penH = penaltyHome;
+            penA = penaltyAway;
+        }
+
         Optional<Prediction> existing = predictionRepository
                 .findByUserIdAndMatchIdAndRoomId(userId, matchId, roomId);
 
@@ -82,6 +101,10 @@ public class PredictionService {
             log.info("[Prediction] Creating new prediction - userId={} matchId={} roomId={}",
                     userId, matchId, roomId);
         }
+
+        // Set (or clear, if no longer a knockout tie) the shootout prediction.
+        prediction.setPredictedPenaltyHome(penH);
+        prediction.setPredictedPenaltyAway(penA);
 
         prediction = predictionRepository.save(prediction);
         log.info("[Prediction] submitPrediction ✓ - predictionId={} userId={} matchId={}",
@@ -129,10 +152,13 @@ public class PredictionService {
                 .roomId(p.getRoomId())
                 .predictedHomeScore(p.getPredictedHomeScore())
                 .predictedAwayScore(p.getPredictedAwayScore())
+                .predictedPenaltyHome(p.getPredictedPenaltyHome())
+                .predictedPenaltyAway(p.getPredictedPenaltyAway())
                 .points(p.getPoints())
                 .basePoints(p.getBasePoints())
                 .outcomeBonus(p.getOutcomeBonus())
                 .gdBonus(p.getGdBonus())
+                .penaltyBonus(p.getPenaltyBonus())
                 .createdAt(p.getCreatedAt())
                 .updatedAt(p.getUpdatedAt())
                 .build();

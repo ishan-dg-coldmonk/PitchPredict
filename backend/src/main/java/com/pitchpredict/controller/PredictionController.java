@@ -32,11 +32,15 @@ public class PredictionController {
         Long roomId = Long.valueOf(body.get("roomId").toString());
         int homeScore = Integer.parseInt(body.get("predictedHomeScore").toString());
         int awayScore = Integer.parseInt(body.get("predictedAwayScore").toString());
+        Integer penaltyHome = body.get("predictedPenaltyHome") != null
+                ? Integer.valueOf(body.get("predictedPenaltyHome").toString()) : null;
+        Integer penaltyAway = body.get("predictedPenaltyAway") != null
+                ? Integer.valueOf(body.get("predictedPenaltyAway").toString()) : null;
 
-        log.info("[API] POST /api/predictions - userId={} matchId={} roomId={} score={}:{}",
-                userId, matchId, roomId, homeScore, awayScore);
+        log.info("[API] POST /api/predictions - userId={} matchId={} roomId={} score={}:{} pens={}:{}",
+                userId, matchId, roomId, homeScore, awayScore, penaltyHome, penaltyAway);
         PredictionDTO pred = predictionService.submitPrediction(
-                userId, matchId, eventId, roomId, homeScore, awayScore);
+                userId, matchId, eventId, roomId, homeScore, awayScore, penaltyHome, penaltyAway);
         log.info("[API] POST /api/predictions ✓ - predictionId={}", pred.getId());
         return ResponseEntity.ok(pred);
     }

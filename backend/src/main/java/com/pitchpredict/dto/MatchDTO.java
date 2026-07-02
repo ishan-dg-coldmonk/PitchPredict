@@ -23,6 +23,12 @@ public class MatchDTO {
     private Integer homeScore;
     private Integer awayScore;
 
+    /** REGULAR | EXTRA_TIME | PENALTY_SHOOTOUT */
+    private String duration;
+    /** Shootout tally — present only for PENALTY_SHOOTOUT matches. */
+    private Integer penaltyHome;
+    private Integer penaltyAway;
+
     @JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss'Z'", timezone = "UTC")
     private LocalDateTime matchDate;
     private String stage;

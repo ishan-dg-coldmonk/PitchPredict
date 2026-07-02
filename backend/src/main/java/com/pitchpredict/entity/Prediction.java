@@ -32,6 +32,10 @@ public class Prediction {
     @Column(nullable = false)
     private Integer predictedAwayScore;
 
+    /** Shootout prediction — only set when the user predicts a tie on a knockout match. */
+    private Integer predictedPenaltyHome;
+    private Integer predictedPenaltyAway;
+
     @Column(nullable = false)
     @Builder.Default
     private Integer points = 0;
@@ -44,6 +48,9 @@ public class Prediction {
 
     @Builder.Default
     private Integer gdBonus = 0;
+
+    @Builder.Default
+    private Integer penaltyBonus = 0;
 
     @Column(nullable = false)
     private LocalDateTime createdAt;

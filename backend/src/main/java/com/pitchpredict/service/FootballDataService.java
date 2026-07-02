@@ -238,9 +238,9 @@ public class FootballDataService {
 
                 applyMatchFields(match, m);
 
-                // For already-finished matches set the full-time score immediately
+                // For already-finished matches set the score immediately
                 if (match.getStatus() == MatchStatus.FINISHED) {
-                    applyFullTimeScore(match, m);
+                    applyScore(match, m);
                 }
 
                 matchRepository.save(match);
@@ -301,7 +301,7 @@ public class FootballDataService {
             // and showing the half-time score made the card look "finished" at HT.
 
             if (newStatus == MatchStatus.LIVE || newStatus == MatchStatus.FINISHED) {
-                applyFullTimeScore(match, m);
+                applyScore(match, m);
             }
 
             // Extract goal scorers only once the match is completely done
@@ -395,11 +395,43 @@ public class FootballDataService {
         match.setStatus(mapApiStatus(m.path("status").asText("SCHEDULED")));
     }
 
-    private void applyFullTimeScore(Match match, JsonNode m) {
-        JsonNode ft = m.path("score").path("fullTime");
-        if (!ft.path("home").isNull() && !ft.path("away").isNull()) {
-            match.setHomeScore(ft.path("home").asInt());
-            match.setAwayScore(ft.path("away").asInt());
+    /**
+     * Reads the score object and stores the *rated* scoreline plus penalty data.
+     *
+     * football-data quirk: for a PENALTY_SHOOTOUT, fullTime = open-play draw + the
+     * shootout tally (e.g. open play 2-2 + pens 5-4 → fullTime 7-6). So we subtract
+     * the penalties back out to recover the real scoreline users see and are scored on.
+     *
+     *   REGULAR / EXTRA_TIME  → homeScore/awayScore = fullTime, no penalties
+     *   PENALTY_SHOOTOUT      → homeScore/awayScore = fullTime − penalties, penalties stored
+     */
+    private void applyScore(Match match, JsonNode m) {
+        JsonNode score = m.path("score");
+        String duration = score.path("duration").asText("REGULAR");
+        match.setDuration(duration);
+
+        JsonNode ft = score.path("fullTime");
+        if (ft.path("home").isNull() || ft.path("away").isNull()) return; // no score yet
+
+        int ftHome = ft.path("home").asInt();
+        int ftAway = ft.path("away").asInt();
+
+        JsonNode pen = score.path("penalties");
+        boolean shootout = "PENALTY_SHOOTOUT".equals(duration)
+                && !pen.path("home").isNull() && !pen.path("away").isNull();
+
+        if (shootout) {
+            int penHome = pen.path("home").asInt();
+            int penAway = pen.path("away").asInt();
+            match.setHomeScore(ftHome - penHome); // recover the open-play draw
+            match.setAwayScore(ftAway - penAway);
+            match.setPenaltyHome(penHome);
+            match.setPenaltyAway(penAway);
+        } else {
+            match.setHomeScore(ftHome);
+            match.setAwayScore(ftAway);
+            match.setPenaltyHome(null);
+            match.setPenaltyAway(null);
         }
     }
 
