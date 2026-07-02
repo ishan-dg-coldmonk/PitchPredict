@@ -15,6 +15,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
+import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Optional;
 
@@ -48,7 +49,7 @@ public class PredictionService {
         }
 
         LocalDateTime deadline = match.getMatchDate().minusMinutes(CLOSE_BEFORE_KICKOFF_MINUTES);
-        if (!LocalDateTime.now().isBefore(deadline)) {
+        if (!LocalDateTime.now(ZoneOffset.UTC).isBefore(deadline)) {
             log.warn("[Prediction] REJECTED - window closed (deadline={}) - userId={} matchId={}",
                     deadline, userId, matchId);
             throw ApiException.badRequest("Prediction window is closed — submissions end 5 minutes before kick-off");
@@ -102,7 +103,7 @@ public class PredictionService {
 
         // Prediction window is computed dynamically
         boolean windowOpen = match.getStatus() == MatchStatus.SCHEDULED
-                && LocalDateTime.now().isBefore(
+                && LocalDateTime.now(ZoneOffset.UTC).isBefore(
                         match.getMatchDate().minusMinutes(CLOSE_BEFORE_KICKOFF_MINUTES));
 
         // If window is still open, only reveal other predictions if current user has predicted

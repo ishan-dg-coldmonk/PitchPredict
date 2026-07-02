@@ -2,3 +2,13 @@
 
 DEPLOYMENT.md
 deploy-ec2.sh
+
+# Build artifacts
+backend/target/
+
+# Logs
+*.log
+
+# Local environment / secrets
+.env
+*.env

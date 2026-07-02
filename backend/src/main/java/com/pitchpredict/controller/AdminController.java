@@ -19,6 +19,7 @@ import com.pitchpredict.service.LeaderboardService;
 import com.pitchpredict.service.MatchService;
 import com.pitchpredict.service.PointsCalculationService;
 import com.pitchpredict.service.RoomService;
+import com.pitchpredict.service.WebSocketService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
@@ -48,6 +49,7 @@ public class AdminController {
     private final UserRepository userRepository;
     private final ObjectMapper objectMapper;
     private final LeaderboardService leaderboardService;
+    private final WebSocketService webSocketService;
 
     // ── Events ────────────────────────────────────────────────────────────────
 
@@ -107,6 +109,14 @@ public class AdminController {
         log.info("[API] POST /api/admin/events/{}/sync-goals", id);
         int count = footballDataService.syncGoalsForEvent(id);
         log.info("[API] POST /api/admin/events/{}/sync-goals ✓ - {} goal(s)", id, count);
+        return ResponseEntity.ok(Map.of("synced", count));
+    }
+
+    @PostMapping("/events/{id}/sync-standings")
+    public ResponseEntity<Map<String, Object>> syncStandings(@PathVariable Long id) {
+        log.info("[API] POST /api/admin/events/{}/sync-standings", id);
+        int count = footballDataService.syncStandings(id);
+        log.info("[API] POST /api/admin/events/{}/sync-standings ✓ - {} row(s)", id, count);
         return ResponseEntity.ok(Map.of("synced", count));
     }
 
@@ -188,8 +198,10 @@ public class AdminController {
         match.setStatus(MatchStatus.FINISHED);
         // Note: no predictionOpen flag — eligibility is computed dynamically
         match = matchRepository.save(match);
-        pointsCalculationService.calculatePointsForMatch(match);
+        pointsCalculationService.calculatePointsForMatch(match); // also broadcasts leaderboards
         MatchDTO dto = matchService.toDTO(match);
+        // Push the finished score live to everyone viewing the event, like the scheduler does.
+        webSocketService.broadcastMatchFinished(dto);
         log.info("[API] POST /api/admin/matches/{}/set-score ✓", id);
         return ResponseEntity.ok(dto);
     }

@@ -14,6 +14,7 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
 import java.time.LocalDateTime;
+import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
 
@@ -52,7 +53,8 @@ public class MatchScoreUpdater {
 
     @Scheduled(fixedRate = 60_000)
     public void run() {
-        LocalDateTime now  = LocalDateTime.now();
+        // matchDate is stored in UTC, so the window must be computed in UTC.
+        LocalDateTime now  = LocalDateTime.now(ZoneOffset.UTC);
         LocalDateTime from = now.minusHours(LOOKBACK_HOURS);
         LocalDateTime to   = now.plusMinutes(LOOKAHEAD_MINUTES);
 

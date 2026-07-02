@@ -5,6 +5,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.pitchpredict.dto.MatchGoalDTO;
 import com.pitchpredict.dto.StandingRowDTO;
 import com.pitchpredict.dto.StandingsGroupDTO;
+import com.pitchpredict.entity.StandingRow;
+import com.pitchpredict.repository.StandingRowRepository;
 import com.pitchpredict.entity.Event;
 import com.pitchpredict.entity.Match;
 import com.pitchpredict.enums.MatchStatus;
@@ -16,12 +18,13 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.*;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.client.HttpStatusCodeException;
 import org.springframework.web.client.RestTemplate;
 
 import java.time.*;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
-import java.util.concurrent.ConcurrentHashMap;
 
 @Service
 @RequiredArgsConstructor
@@ -30,6 +33,7 @@ public class FootballDataService {
 
     private final MatchRepository matchRepository;
     private final EventRepository eventRepository;
+    private final StandingRowRepository standingRowRepository;
     private final ObjectMapper objectMapper;
 
     @Value("${football-data.api-key}")
@@ -40,24 +44,58 @@ public class FootballDataService {
 
     private final RestTemplate restTemplate = new RestTemplate();
 
-    // ── Standings: on-demand fetch with a short-lived in-memory cache ─────────
+    @jakarta.annotation.PostConstruct
+    void logApiKeyStatus() {
+        if (apiKey == null || apiKey.isBlank()) {
+            log.warn("[FootballData] FOOTBALL_DATA_API_KEY is NOT set — sync/standings will fail with 403");
+        } else {
+            log.info("[FootballData] API key loaded (length={})", apiKey.length());
+        }
+    }
+
+    // ── Standings: served from our DB, refreshed by the daily sync job ────────
     //
-    // Standings change only when a match finishes (a few times a day), but page
-    // loads can be frequent — and we share a 10 req/min budget with the live
-    // score scheduler. So we cache per competition for STANDINGS_TTL_MS and only
-    // hit the API when the cache is cold or stale.
+    // The standings table is the source of truth for the UI. It's refreshed once
+    // a day by DailySyncJob (and on demand via the admin sync-standings endpoint)
+    // — so reads never touch the football API and survive it being down/disabled.
 
-    private static final long STANDINGS_TTL_MS = 3 * 60 * 1000; // 3 minutes
+    /** Reads persisted standings for an event and groups them for the UI. */
+    public List<StandingsGroupDTO> getStandings(Long eventId) {
+        List<StandingRow> rows = standingRowRepository.findByEventIdOrderByGroupNameAscPositionAsc(eventId);
+        if (rows.isEmpty()) return List.of(); // not synced yet
 
-    private record CachedStandings(List<StandingsGroupDTO> groups, long fetchedAt) {}
+        Map<String, List<StandingRowDTO>> byGroup = new LinkedHashMap<>();
+        for (StandingRow r : rows) {
+            byGroup.computeIfAbsent(r.getGroupName(), k -> new ArrayList<>())
+                    .add(StandingRowDTO.builder()
+                            .position(r.getPosition())
+                            .teamId(r.getTeamId())
+                            .teamName(r.getTeamName())
+                            .teamTla(r.getTeamTla())
+                            .teamCrest(r.getTeamCrest())
+                            .playedGames(r.getPlayedGames())
+                            .won(r.getWon())
+                            .draw(r.getDraw())
+                            .lost(r.getLost())
+                            .points(r.getPoints())
+                            .goalsFor(r.getGoalsFor())
+                            .goalsAgainst(r.getGoalsAgainst())
+                            .goalDifference(r.getGoalDifference())
+                            .build());
+        }
 
-    private final Map<String, CachedStandings> standingsCache = new ConcurrentHashMap<>();
+        return byGroup.entrySet().stream()
+                .map(e -> StandingsGroupDTO.builder().group(e.getKey()).table(e.getValue()).build())
+                .toList();
+    }
 
     /**
-     * Returns group standings for an event's competition.
-     * Cached; serves the last good value if a refresh fails.
+     * Fetches standings from the football API and replaces the persisted rows
+     * for this event. One API call per invocation. Called by the daily job and
+     * the admin sync-standings endpoint.
      */
-    public List<StandingsGroupDTO> getStandings(Long eventId) {
+    @Transactional
+    public int syncStandings(Long eventId) {
         Event event = eventRepository.findById(eventId)
                 .orElseThrow(() -> ApiException.notFound("Event not found"));
 
@@ -66,22 +104,53 @@ public class FootballDataService {
             throw ApiException.badRequest("Event has no API competition ID configured");
         }
 
-        CachedStandings cached = standingsCache.get(compId);
-        if (cached != null && System.currentTimeMillis() - cached.fetchedAt() < STANDINGS_TTL_MS) {
-            log.debug("[Standings] cache hit for comp {}", compId);
-            return cached.groups();
-        }
-
+        List<StandingsGroupDTO> groups;
         try {
-            List<StandingsGroupDTO> fresh = fetchStandings(compId);
-            standingsCache.put(compId, new CachedStandings(fresh, System.currentTimeMillis()));
-            log.info("[Standings] fetched comp {} → {} group(s)", compId, fresh.size());
-            return fresh;
+            groups = fetchStandings(compId);
+        } catch (HttpStatusCodeException e) {
+            int status = e.getStatusCode().value();
+            log.error("[Standings] API error {} for comp {}: {}", status, compId, e.getResponseBodyAsString());
+            if (status == 401 || status == 403) {
+                throw ApiException.badRequest(
+                        "Football data API key is missing, invalid, or disabled — check FOOTBALL_DATA_API_KEY.");
+            }
+            if (status == 429) {
+                throw ApiException.badRequest("Football data API rate limit hit — wait a minute and retry.");
+            }
+            throw ApiException.badRequest("Football data API error (HTTP " + status + ")");
         } catch (Exception e) {
-            log.warn("[Standings] fetch failed for comp {}: {}", compId, e.getMessage());
-            if (cached != null) return cached.groups(); // serve stale rather than fail
             throw ApiException.badRequest("Failed to fetch standings: " + e.getMessage());
         }
+
+        standingRowRepository.deleteByEventId(eventId);
+
+        LocalDateTime now = LocalDateTime.now();
+        List<StandingRow> rows = new ArrayList<>();
+        for (StandingsGroupDTO g : groups) {
+            for (StandingRowDTO d : g.getTable()) {
+                rows.add(StandingRow.builder()
+                        .eventId(eventId)
+                        .groupName(g.getGroup())
+                        .position(d.getPosition())
+                        .teamId(d.getTeamId())
+                        .teamName(d.getTeamName())
+                        .teamTla(d.getTeamTla())
+                        .teamCrest(d.getTeamCrest())
+                        .playedGames(d.getPlayedGames())
+                        .won(d.getWon())
+                        .draw(d.getDraw())
+                        .lost(d.getLost())
+                        .points(d.getPoints())
+                        .goalsFor(d.getGoalsFor())
+                        .goalsAgainst(d.getGoalsAgainst())
+                        .goalDifference(d.getGoalDifference())
+                        .lastUpdated(now)
+                        .build());
+            }
+        }
+        standingRowRepository.saveAll(rows);
+        log.info("[Standings] synced {} row(s) for event {} (comp {})", rows.size(), eventId, compId);
+        return rows.size();
     }
 
     private List<StandingsGroupDTO> fetchStandings(String apiCompId) throws Exception {
@@ -180,6 +249,19 @@ public class FootballDataService {
 
             log.info("Synced {} matches for event {}", count, eventId);
             return count;
+        } catch (HttpStatusCodeException e) {
+            // Upstream (football-data.org) rejected the call — surface a clear reason.
+            int status = e.getStatusCode().value();
+            log.error("Football API error {} while syncing: {}", status, e.getResponseBodyAsString());
+            if (status == 401 || status == 403) {
+                throw ApiException.badRequest(
+                        "Football data API key is missing, invalid, or disabled — check FOOTBALL_DATA_API_KEY.");
+            }
+            if (status == 429) {
+                throw ApiException.badRequest(
+                        "Football data API rate limit hit (10 req/min on the free tier) — wait a minute and retry.");
+            }
+            throw ApiException.badRequest("Football data API error (HTTP " + status + ")");
         } catch (Exception e) {
             log.error("Failed to sync matches: {}", e.getMessage());
             throw ApiException.badRequest("Failed to sync: " + e.getMessage());

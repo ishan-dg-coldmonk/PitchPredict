@@ -13,6 +13,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
+import java.time.ZoneOffset;
 import java.util.Collections;
 import java.util.List;
 
@@ -91,7 +92,7 @@ public class MatchService {
             return false;
         }
         LocalDateTime deadline = match.getMatchDate().minusMinutes(PREDICTION_CLOSE_MINUTES);
-        boolean open = LocalDateTime.now().isBefore(deadline);
+        boolean open = LocalDateTime.now(ZoneOffset.UTC).isBefore(deadline);
         log.debug("[Match] predictionOpen={} - matchId={} matchDate={} deadline={}",
                 open, match.getId(), match.getMatchDate(), deadline);
         return open;

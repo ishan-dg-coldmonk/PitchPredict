@@ -91,6 +91,8 @@ export default function StandingsTable({ groups }) {
           </table>
         </motion.div>
       ))}
+
+      <p className="text-[11px] text-gray-500 px-1">Standings update once daily (~1:00 PM IST)</p>
     </div>
   )
 }

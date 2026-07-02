@@ -161,8 +161,19 @@ function EventRow({ event, onReload }) {
   const handleSync = async () => {
     setSyncing(true)
     try {
-      const res = await API.post(`/admin/events/${event.id}/sync-matches`)
-      toast.success(`Synced ${res.data.synced} matches`)
+      const matchRes = await API.post(`/admin/events/${event.id}/sync-matches`)
+
+      // Also refresh standings. Don't fail the whole sync if this part errors
+      // (e.g. knockout-only competition with no group tables).
+      let standingsMsg = ''
+      try {
+        const stRes = await API.post(`/admin/events/${event.id}/sync-standings`)
+        standingsMsg = ` · ${stRes.data.synced} standings rows`
+      } catch (stErr) {
+        standingsMsg = ' · standings sync failed'
+      }
+
+      toast.success(`Synced ${matchRes.data.synced} matches${standingsMsg}`)
       onReload()
     } catch (err) {
       toast.error(err.response?.data?.error || 'Sync failed')
