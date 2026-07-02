@@ -12,3 +12,5 @@ backend/target/
 # Local environment / secrets
 .env
 *.env
+
+target/
