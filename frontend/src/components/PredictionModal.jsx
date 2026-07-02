@@ -34,14 +34,17 @@ function usePredictionWindow(match) {
   return { canPredict, minutesLeft, secondsLeft, msUntilClose }
 }
 
-export default function PredictionModal({ match, roomId, eventId, existing, onClose, onSaved }) {
+export default function PredictionModal({ match, roomId, eventId, existing, eventEnded, onClose, onSaved }) {
   const [homeScore, setHomeScore] = useState(existing?.predictedHomeScore ?? '')
   const [awayScore, setAwayScore] = useState(existing?.predictedAwayScore ?? '')
   const [penaltyHome, setPenaltyHome] = useState(existing?.predictedPenaltyHome ?? '')
   const [penaltyAway, setPenaltyAway] = useState(existing?.predictedPenaltyAway ?? '')
   const [saving, setSaving]       = useState(false)
 
-  const { canPredict, minutesLeft, secondsLeft, msUntilClose } = usePredictionWindow(match)
+  const window_ = usePredictionWindow(match)
+  const { minutesLeft, secondsLeft, msUntilClose } = window_
+  // A completed event locks predictions regardless of the per-match window.
+  const canPredict = window_.canPredict && !eventEnded
 
   const isFinished = match.status === 'FINISHED'
   const isLive     = match.status === 'LIVE'
@@ -115,6 +118,7 @@ export default function PredictionModal({ match, roomId, eventId, existing, onCl
   }
 
   const closedMsg = () => {
+    if (eventEnded) return { icon: '🏆', title: 'Event has ended',    sub: 'Predictions are closed — check the final leaderboard' }
     if (isFinished) return { icon: '🏁', title: 'Match has ended',   sub: 'Predictions are no longer accepted' }
     if (isLive)     return { icon: '🔴', title: 'Match is underway', sub: 'Prediction window closed before kick-off' }
     return              { icon: '🔒', title: 'Predictions closed',  sub: 'Window closes 5 min before kick-off' }

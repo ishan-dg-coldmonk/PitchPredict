@@ -162,6 +162,8 @@ export default function RoomDetailPage() {
   const initialLoadDone = useRef(false)
   // Keep eventId in a ref so WebSocket effect can read it without re-subscribing
   const eventIdRef = useRef(null)
+  // Only auto-pick the default tab once, on first entry (never yank the tab later)
+  const defaultTabApplied = useRef(false)
 
   // Wall-clock tick (every 20s) so kick-off-based derived values (featured pick,
   // live count, "today" strip) re-evaluate when a match crosses kick-off even
@@ -216,6 +218,11 @@ export default function RoomDetailPage() {
         ])
         setMatches(matchRes.data)
         setEvent(eventRes.data)
+        // On first entry to a finished event, land on the leaderboard (winner) tab.
+        if (!defaultTabApplied.current) {
+          if (eventRes.data.status === 'COMPLETED') setMainTab('leaderboard')
+          defaultTabApplied.current = true
+        }
         const map = {}
         predRes.data.forEach((p) => { map[p.matchId] = p })
         setPredictions(map)
@@ -281,9 +288,21 @@ export default function RoomDetailPage() {
       }
     )
 
+    // ── Event status updates (e.g. admin ends the event) ────────────────────
+    // Update status in place so the winner card, prediction lock, etc. react —
+    // but DON'T switch the user's current tab.
+    const unsubEvent = subscribe(
+      `/topic/events/${eventId}`,
+      (evt) => {
+        // evt = { type: 'EVENT_UPDATED', payload: EventDTO }
+        setEvent((prev) => (prev ? { ...prev, ...evt.payload } : evt.payload))
+      }
+    )
+
     return () => {
       unsubMatches()
       unsubLeaderboard()
+      unsubEvent()
     }
   }, [loading, subscribe, roomId]) // re-run only after initial load completes
 
@@ -304,8 +323,12 @@ export default function RoomDetailPage() {
       .finally(() => setStandingsLoading(false))
   }, [mainTab, event?.id, standings, standingsLoading])
 
+  // A completed event locks predictions and reveals everyone's picks.
+  const eventEnded = event?.status === 'COMPLETED'
+
   // ── Prediction view eligibility ───────────────────────────────────────────
   const canViewPredictions = (match) => {
+    if (eventEnded)                  return true
     if (match.status === 'FINISHED') return true
     if (match.status === 'LIVE')     return true
     // predictionOpen is dynamically computed in MatchService.toDTO()
@@ -314,25 +337,27 @@ export default function RoomDetailPage() {
 
   // ── Match card renderer ───────────────────────────────────────────────────
   const renderMatchCard = (match, i) => {
-    const pred        = predictions[match.id]
-    const isFeatured  = featuredMatch?.id === match.id
-    const showViewAll = canViewPredictions(match)
-    const isFinished  = match.status === 'FINISHED'
-    const isLive      = match.status === 'LIVE'
+    // Once the event is over, treat every match as closed for predicting.
+    const m = eventEnded ? { ...match, predictionOpen: false } : match
+    const pred        = predictions[m.id]
+    const isFeatured  = featuredMatch?.id === m.id
+    const showViewAll = canViewPredictions(m)
+    const isFinished  = m.status === 'FINISHED'
+    const isLive      = m.status === 'LIVE'
 
     return (
       <motion.div
-        key={match.id}
+        key={m.id}
         custom={i}
         initial="hidden"
         animate="visible"
         variants={snapIn}
         className={isFeatured ? 'ring-1 ring-primary/30 rounded-xl' : ''}
       >
-        <MatchCard match={match} onClick={() => setSelectedMatch(match)}>
+        <MatchCard match={m} onClick={() => setSelectedMatch(m)}>
           {showViewAll && (
             <button
-              onClick={(e) => { e.stopPropagation(); setViewAllMatch(match) }}
+              onClick={(e) => { e.stopPropagation(); setViewAllMatch(m) }}
               className="flex items-center gap-1 text-[10px] uppercase tracking-wider font-semibold text-gray-400 hover:text-white bg-white/5 hover:bg-white/10 px-2.5 py-0.5 rounded transition-colors duration-150"
             >
               <Eye size={10} /> Predictions
@@ -352,8 +377,10 @@ export default function RoomDetailPage() {
           {!pred && isLive && (
             <span className="text-[10px] font-semibold text-red-400 bg-red-500/10 px-2 py-0.5 rounded">In Play</span>
           )}
-          {!pred && !isFinished && !isLive && !match.predictionOpen && (
-            <span className="text-[10px] font-semibold text-gray-500 bg-white/5 px-2 py-0.5 rounded">Closed</span>
+          {!pred && !isFinished && !isLive && !m.predictionOpen && (
+            <span className="text-[10px] font-semibold text-gray-500 bg-white/5 px-2 py-0.5 rounded">
+              {eventEnded ? 'Ended' : 'Closed'}
+            </span>
           )}
         </MatchCard>
       </motion.div>
@@ -509,7 +536,7 @@ export default function RoomDetailPage() {
                                 <div className="mt-2 text-[10px] font-bold text-accent bg-accent/10 rounded px-1.5 py-0.5 inline-block">
                                   {pred.predictedHomeScore}:{pred.predictedAwayScore}
                                 </div>
-                              ) : match.predictionOpen ? (
+                              ) : (!eventEnded && match.predictionOpen) ? (
                                 <div className="mt-2 text-[10px] font-bold text-primary bg-primary/10 rounded px-1.5 py-0.5 inline-block">
                                   Open
                                 </div>
@@ -647,6 +674,7 @@ export default function RoomDetailPage() {
             roomId={Number(roomId)}
             eventId={room.eventId}
             existing={predictions[selectedMatch.id]}
+            eventEnded={eventEnded}
             onClose={() => setSelectedMatch(null)}
             onSaved={loadData}
           />
