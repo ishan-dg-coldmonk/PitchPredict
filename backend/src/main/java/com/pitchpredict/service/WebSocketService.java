@@ -1,5 +1,6 @@
 package com.pitchpredict.service;
 
+import com.pitchpredict.dto.ChatMessageDTO;
 import com.pitchpredict.dto.EventDTO;
 import com.pitchpredict.dto.LeaderboardEntry;
 import com.pitchpredict.dto.MatchDTO;
@@ -69,6 +70,17 @@ public class WebSocketService {
                 roomId, entries.size());
         send("/topic/leaderboard/" + roomId,
                 WebSocketEvent.Type.LEADERBOARD_UPDATED, entries);
+    }
+
+    // ── Chat broadcasts ──────────────────────────────────────────────────────
+
+    /** Pushes a newly-posted chat message to everyone subscribed to that room. */
+    public void broadcastChatMessage(ChatMessageDTO message) {
+        log.info("[WS] CHAT_MESSAGE → /topic/chat/{} │ {}: {} char(s)",
+                message.getRoomId(), message.getUsername(),
+                message.getContent() == null ? 0 : message.getContent().length());
+        send("/topic/chat/" + message.getRoomId(),
+                WebSocketEvent.Type.CHAT_MESSAGE, message);
     }
 
     // ── Internal helper ──────────────────────────────────────────────────────
