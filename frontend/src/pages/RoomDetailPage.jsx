@@ -1,12 +1,13 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { useParams } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Users, Eye, X, CalendarDays, CheckCircle2 } from 'lucide-react'
+import { Users, Eye, X, CalendarDays, CheckCircle2, Trophy } from 'lucide-react'
 import Navbar from '../components/Navbar'
 import MatchCard from '../components/MatchCard'
 import FeaturedMatchCard from '../components/FeaturedMatchCard'
 import LeaderboardTable from '../components/LeaderboardTable'
 import StandingsTable from '../components/StandingsTable'
+import StatsTab from '../components/StatsTab'
 import PredictionModal from '../components/PredictionModal'
 import LiveIndicator from '../components/LiveIndicator'
 import { useAuth } from '../context/AuthContext'
@@ -38,6 +39,24 @@ function pickFeatured(matches, nowMs) {
     .filter((m) => m.status === 'SCHEDULED' && new Date(m.matchDate).getTime() > nowMs)
     .sort((a, b) => new Date(a.matchDate) - new Date(b.matchDate))
   return any[0] ?? null
+}
+
+// The tournament winner = whoever won the FINISHED final (via score or penalties).
+function getChampion(matches) {
+  const final = matches.find(
+    (m) => m.stage === 'FINAL' && m.status === 'FINISHED' && m.homeScore != null
+  )
+  if (!final) return null
+  const homeWon = final.penaltyHome != null
+    ? final.penaltyHome > final.penaltyAway
+    : final.homeScore > final.awayScore
+  return {
+    team:     homeWon ? final.homeTeam  : final.awayTeam,
+    crest:    homeWon ? final.homeCrest : final.awayCrest,
+    runnerUp: homeWon ? final.awayTeam  : final.homeTeam,
+    score:    `${final.homeScore}–${final.awayScore}`,
+    pens:     final.penaltyHome != null ? `${final.penaltyHome}-${final.penaltyAway}` : null,
+  }
 }
 
 function groupByESTDay(matches) {
@@ -152,6 +171,8 @@ export default function RoomDetailPage() {
   const [leaderboard, setLeaderboard] = useState([])
   const [standings, setStandings]         = useState(null)   // null = not yet loaded
   const [standingsLoading, setStandingsLoading] = useState(false)
+  const [scorerStats, setScorerStats]     = useState(null)   // null = not yet loaded
+  const [scorerLoading, setScorerLoading] = useState(false)
   const [predictions, setPredictions] = useState({})
   const [mainTab, setMainTab]         = useState('matches')
   const [matchTab, setMatchTab]       = useState('upcoming')
@@ -323,8 +344,25 @@ export default function RoomDetailPage() {
       .finally(() => setStandingsLoading(false))
   }, [mainTab, event?.id, standings, standingsLoading])
 
+  // ── Top scorers: lazy-load the first time the Stats tab is opened ──────────
+  useEffect(() => {
+    if (mainTab !== 'stats') return
+    if (scorerStats !== null || scorerLoading) return
+    if (!event?.id) return
+
+    setScorerLoading(true)
+    API.get(`/events/${event.id}/scorers`)
+      .then((r) => setScorerStats(r.data))
+      .catch((err) => {
+        console.error('Failed to load top scorers:', err)
+        setScorerStats([])
+      })
+      .finally(() => setScorerLoading(false))
+  }, [mainTab, event?.id, scorerStats, scorerLoading])
+
   // A completed event locks predictions and reveals everyone's picks.
   const eventEnded = event?.status === 'COMPLETED'
+  const champion = useMemo(() => (eventEnded ? getChampion(matches) : null), [eventEnded, matches])
 
   // ── Prediction view eligibility ───────────────────────────────────────────
   const canViewPredictions = (match) => {
@@ -431,17 +469,22 @@ export default function RoomDetailPage() {
 
         {/* Main tabs */}
         <div className="flex flex-wrap gap-1 mb-6 sm:mb-8 bg-white/[0.03] p-1 rounded-xl w-fit">
-          {['matches', 'leaderboard', 'standings'].map((t) => (
+          {[
+            { id: 'matches',     label: 'Matches' },
+            { id: 'leaderboard', label: 'Leaderboard' },
+            { id: 'standings',   label: 'Standings' },
+            { id: 'stats',       label: 'Top Scorers' },
+          ].map((t) => (
             <button
-              key={t}
-              onClick={() => setMainTab(t)}
-              className={`text-sm font-semibold capitalize px-4 sm:px-5 py-2 rounded-lg transition-all duration-200 ${
-                mainTab === t
+              key={t.id}
+              onClick={() => setMainTab(t.id)}
+              className={`text-sm font-semibold px-4 sm:px-5 py-2 rounded-lg transition-all duration-200 ${
+                mainTab === t.id
                   ? 'text-white bg-primary/20 shadow-sm'
                   : 'text-gray-500 hover:text-gray-300 hover:bg-white/[0.03]'
               }`}
             >
-              {t}
+              {t.label}
             </button>
           ))}
         </div>
@@ -455,6 +498,30 @@ export default function RoomDetailPage() {
                 <div className="py-16 text-center text-gray-500 text-sm">No matches scheduled yet</div>
               ) : (
                 <>
+                  {/* World Cup champion — shown once the event has ended */}
+                  {champion && (
+                    <motion.div
+                      initial={{ opacity: 0, scale: 0.96, y: 12 }}
+                      animate={{ opacity: 1, scale: 1, y: 0 }}
+                      transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
+                      className="relative overflow-hidden rounded-2xl border border-gold/30 bg-gradient-to-br from-gold/15 via-[#1a1710] to-[#12121e] p-5 sm:p-6 mb-6"
+                    >
+                      <div className="pointer-events-none absolute -top-16 -right-10 w-48 h-48 rounded-full bg-gold/20 blur-3xl" />
+                      <div className="relative flex items-center justify-center gap-2 mb-3">
+                        <Trophy size={15} className="text-gold" />
+                        <span className="text-[11px] font-bold uppercase tracking-[0.22em] text-gold">World Champions</span>
+                        <Trophy size={15} className="text-gold" />
+                      </div>
+                      <div className="relative flex flex-col items-center gap-2 text-center">
+                        {champion.crest && <img src={champion.crest} alt="" className="w-16 h-16 object-contain drop-shadow-lg" />}
+                        <div className="text-xl sm:text-2xl font-black text-white">{champion.team}</div>
+                        <div className="text-xs text-gray-400">
+                          beat {champion.runnerUp} {champion.score}{champion.pens ? ` (${champion.pens} pens)` : ''} in the final
+                        </div>
+                      </div>
+                    </motion.div>
+                  )}
+
                   {/* Featured */}
                   {featuredMatch && (
                     <div className="mb-6 sm:mb-8">
@@ -659,6 +726,17 @@ export default function RoomDetailPage() {
               ) : (
                 <StandingsTable groups={standings} />
               )}
+            </motion.div>
+          )}
+
+          {/* ════════ STATS TAB ════════ */}
+          {mainTab === 'stats' && (
+            <motion.div key="stats" {...fade}>
+              <StatsTab
+                scorers={scorerStats}
+                loading={scorerLoading && scorerStats === null}
+                eventEnded={eventEnded}
+              />
             </motion.div>
           )}
 
