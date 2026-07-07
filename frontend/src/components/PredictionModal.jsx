@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { X, Clock } from 'lucide-react'
+import { X, Clock, Sparkles } from 'lucide-react'
 import { formatDateTimeIST } from '../utils/helpers'
 import API from '../api/axios'
 import toast from 'react-hot-toast'
@@ -53,6 +53,30 @@ export default function PredictionModal({ match, roomId, eventId, existing, even
   const isKnockout    = !!match.stage && match.stage !== 'GROUP_STAGE'
   const isTie         = homeScore !== '' && awayScore !== '' && Number(homeScore) === Number(awayScore)
   const needPenalties = canPredict && isKnockout && isTie
+
+  // ── AI suggestion (ON-DEMAND: generated once per match on first request,
+  //    then cached in the DB and reused for everyone — minimal API calls) ─────
+  const [rec, setRec]             = useState(null)
+  const [recLoading, setRecLoading] = useState(false)
+  const [recFailed, setRecFailed] = useState(false)
+
+  const fetchAiSuggestion = () => {
+    setRecLoading(true); setRecFailed(false)
+    API.get(`/matches/${match.id}/recommendation`)
+      .then((r) => { r.status === 204 ? setRecFailed(true) : setRec(r.data) })
+      .catch(() => setRecFailed(true))   // any failure (busy/error/empty) → show retry, never hide
+      .finally(() => setRecLoading(false))
+  }
+
+  const applyAiSuggestion = () => {
+    if (!rec) return
+    setHomeScore(rec.homeScore)
+    setAwayScore(rec.awayScore)
+    if (rec.penaltyHome != null && rec.penaltyAway != null) {
+      setPenaltyHome(rec.penaltyHome)
+      setPenaltyAway(rec.penaltyAway)
+    }
+  }
 
   // Sync inputs whenever existing prediction changes
   useEffect(() => {
@@ -262,6 +286,80 @@ export default function PredictionModal({ match, roomId, eventId, existing, even
                   </span>
                 </div>
               </div>
+            </div>
+          )}
+
+          {/* AI pundit — on-demand */}
+          {canPredict && (
+            <div className="mb-4">
+              {rec ? (
+                <motion.div
+                  initial={{ opacity: 0, y: 10, scale: 0.98 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  transition={{ duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
+                  className="relative overflow-hidden rounded-2xl border border-primary/30 bg-gradient-to-br from-primary/20 via-secondary/10 to-transparent p-4 text-center"
+                >
+                  {/* ambient glow */}
+                  <div className="pointer-events-none absolute -top-14 left-1/2 -translate-x-1/2 w-40 h-40 rounded-full bg-primary/20 blur-3xl" />
+
+                  {/* header badge (centered) */}
+                  <div className="relative flex items-center justify-center gap-2 mb-3">
+                    <Sparkles size={13} className="text-primary" />
+                    <span className="text-[10px] font-bold uppercase tracking-[0.22em] bg-gradient-to-r from-primary to-secondary bg-clip-text text-transparent">
+                      AI Pundit
+                    </span>
+                  </div>
+
+                  {/* centered score */}
+                  <div className="relative text-4xl font-black text-white tabular-nums leading-none">
+                    {rec.homeScore}<span className="text-white/25 mx-2.5">–</span>{rec.awayScore}
+                  </div>
+                  {rec.penaltyHome != null && (
+                    <div className="relative text-[11px] font-bold text-amber-400 mt-2">
+                      {rec.penaltyHome}-{rec.penaltyAway} on penalties
+                    </div>
+                  )}
+
+                  {/* rationale (centered) */}
+                  {rec.rationale && (
+                    <p className="relative text-xs text-gray-300 leading-relaxed mt-3 max-w-[16rem] mx-auto">
+                      {rec.rationale}
+                    </p>
+                  )}
+
+                  {/* Use (full width) */}
+                  <button
+                    onClick={applyAiSuggestion}
+                    className="relative w-full mt-4 py-2 rounded-lg text-sm font-bold text-white bg-gradient-to-r from-primary to-secondary hover:opacity-90 transition-opacity"
+                  >
+                    Use this score
+                  </button>
+
+                  {/* pundit commentary (left-aligned quote) */}
+                  {rec.commentary && (
+                    <div className="relative mt-4 pt-3 border-t border-white/10 flex gap-2 text-left">
+                      <span className="text-sm leading-none flex-shrink-0">🎙️</span>
+                      <p className="text-[11px] text-gray-400 italic leading-relaxed">{rec.commentary}</p>
+                    </div>
+                  )}
+                </motion.div>
+              ) : recFailed ? (
+                <button
+                  onClick={fetchAiSuggestion}
+                  className="w-full rounded-xl border border-white/10 bg-white/[0.03] text-gray-400 text-xs font-semibold py-3 hover:bg-white/[0.06] transition-colors"
+                >
+                  🤖 AI is busy right now — tap to try again
+                </button>
+              ) : (
+                <button
+                  onClick={fetchAiSuggestion}
+                  disabled={recLoading}
+                  className="group w-full flex items-center justify-center gap-2 rounded-xl py-3 text-sm font-bold text-white bg-gradient-to-r from-primary/80 to-secondary/80 hover:from-primary hover:to-secondary shadow-lg shadow-primary/20 transition-all disabled:opacity-70"
+                >
+                  <Sparkles size={15} className={recLoading ? 'animate-pulse' : 'group-hover:rotate-12 transition-transform'} />
+                  {recLoading ? 'Consulting the pundit…' : 'Ask AI Pundit'}
+                </button>
+              )}
             </div>
           )}
 

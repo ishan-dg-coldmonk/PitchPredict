@@ -17,3 +17,10 @@ jwt:
 football-data:
   api-key: ${FOOTBALL_DATA_API_KEY:}
   base-url: https://api.football-data.org/v4
+
+# AI score suggestions via OpenRouter (OpenAI-compatible). Set OPENROUTER_API_KEY to
+# enable; leave unset to disable the feature (the modal simply won't show a suggestion).
+openrouter:
+  api-key: ${OPENROUTER_API_KEY:}
+  base-url: https://openrouter.ai/api/v1
+  model: ${OPENROUTER_MODEL:poolside/laguna-xs-2.1:free}
