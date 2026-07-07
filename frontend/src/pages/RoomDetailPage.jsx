@@ -8,8 +8,10 @@ import FeaturedMatchCard from '../components/FeaturedMatchCard'
 import LeaderboardTable from '../components/LeaderboardTable'
 import StandingsTable from '../components/StandingsTable'
 import StatsTab from '../components/StatsTab'
+import ChatRoom from '../components/ChatRoom'
 import PredictionModal from '../components/PredictionModal'
 import LiveIndicator from '../components/LiveIndicator'
+import toast from 'react-hot-toast'
 import { useAuth } from '../context/AuthContext'
 import { useWebSocket } from '../context/WebSocketContext'
 import { getESTDayKey, getDayLabelEST, formatTimeIST, todayESTKey, effectiveStatus } from '../utils/helpers'
@@ -57,6 +59,41 @@ function getChampion(matches) {
     score:    `${final.homeScore}–${final.awayScore}`,
     pens:     final.penaltyHome != null ? `${final.penaltyHome}-${final.penaltyAway}` : null,
   }
+}
+
+// Merge chat messages by id (dedupes reconnect echoes) and sort chronologically.
+// Message ids are monotonic auto-increments, so id order == send order.
+function mergeMessages(existing, incoming) {
+  const map = new Map()
+  for (const m of existing) map.set(m.id, m)
+  for (const m of incoming) map.set(m.id, m)
+  return [...map.values()].sort((a, b) => a.id - b.id)
+}
+
+const CHAT_PAGE = 40
+
+// Toast for a new chat message received while off the Chat tab. A fixed id means
+// a fresh message replaces the previous toast instead of stacking them up.
+function notifyNewMessage(msg, profilePic, onOpen) {
+  const preview = (msg.content ?? '').slice(0, 80)
+  toast.custom((t) => (
+    <div
+      onClick={() => { onOpen(); toast.dismiss(t.id) }}
+      className={`cursor-pointer flex items-center gap-3 bg-[#1A1A2E] border border-white/10 rounded-xl px-3.5 py-2.5 shadow-lg max-w-xs ${
+        t.visible ? 'animate-enter' : 'animate-leave'
+      }`}
+    >
+      <div className="w-8 h-8 rounded-full bg-gradient-to-br from-primary/30 to-secondary/30 flex items-center justify-center text-white text-xs font-bold overflow-hidden flex-shrink-0">
+        {profilePic
+          ? <img src={profilePic} alt="" className="w-full h-full object-cover" />
+          : (msg.username?.[0]?.toUpperCase() ?? '?')}
+      </div>
+      <div className="min-w-0">
+        <div className="text-xs font-bold text-white truncate">💬 {msg.username}</div>
+        <div className="text-[11px] text-gray-400 truncate">{preview}</div>
+      </div>
+    </div>
+  ), { id: 'chat-new', duration: 4000 })
 }
 
 function groupByESTDay(matches) {
@@ -163,7 +200,7 @@ function AllPredictionsModal({ match, roomId, onClose }) {
 export default function RoomDetailPage() {
   const { roomId }            = useParams()
   const { user }              = useAuth()
-  const { subscribe }         = useWebSocket()
+  const { subscribe, publish, isConnected } = useWebSocket()
 
   const [room, setRoom]               = useState(null)
   const [event, setEvent]             = useState(null)
@@ -173,6 +210,15 @@ export default function RoomDetailPage() {
   const [standingsLoading, setStandingsLoading] = useState(false)
   const [scorerStats, setScorerStats]     = useState(null)   // null = not yet loaded
   const [scorerLoading, setScorerLoading] = useState(false)
+  // Chat — messages buffer lives here (not in the tab) so live messages and the
+  // unread badge keep working while the user is on another tab.
+  const [chatMessages, setChatMessages]   = useState([])
+  const [chatLoading, setChatLoading]     = useState(false)
+  const [chatLoadingMore, setChatLoadingMore] = useState(false)
+  const [chatHasMore, setChatHasMore]     = useState(false)
+  const [chatUnread, setChatUnread]       = useState(0)
+  const [chatAvatars, setChatAvatars]     = useState({})   // userId → profilePic
+  const [wsConnected, setWsConnected]     = useState(false)
   const [predictions, setPredictions] = useState({})
   const [mainTab, setMainTab]         = useState('matches')
   const [matchTab, setMatchTab]       = useState('upcoming')
@@ -185,6 +231,17 @@ export default function RoomDetailPage() {
   const eventIdRef = useRef(null)
   // Only auto-pick the default tab once, on first entry (never yank the tab later)
   const defaultTabApplied = useRef(false)
+  // Chat history loaded once (lazily, on first open); ref so the load guard
+  // isn't tricked by live messages arriving before the tab is opened.
+  const chatLoadedRef = useRef(false)
+  // Current tab, mirrored into a ref so the WS callback can read it without
+  // being re-created (which would drop and re-add the subscription).
+  const mainTabRef = useRef('matches')
+  useEffect(() => { mainTabRef.current = mainTab }, [mainTab])
+  // Mirror the avatar map so the WS message callback (and its toast) can read
+  // the latest without being re-created and re-subscribing.
+  const chatAvatarsRef = useRef({})
+  useEffect(() => { chatAvatarsRef.current = chatAvatars }, [chatAvatars])
 
   // Wall-clock tick (every 20s) so kick-off-based derived values (featured pick,
   // live count, "today" strip) re-evaluate when a match crosses kick-off even
@@ -320,12 +377,37 @@ export default function RoomDetailPage() {
       }
     )
 
+    // ── Chat messages (per-room) ────────────────────────────────────────────
+    // Subscribe as soon as the page loads (not just when the Chat tab is open)
+    // so the unread badge stays accurate. Dedupe by id to survive reconnects.
+    const unsubChat = subscribe(
+      `/topic/chat/${roomId}`,
+      (evt) => {
+        if (evt.type !== 'CHAT_MESSAGE') return
+        const msg = evt.payload
+        setChatMessages((prev) => mergeMessages(prev, [msg]))
+        // New message while the user is elsewhere: bump the badge and pop a toast.
+        if (mainTabRef.current !== 'chat' && msg.username !== user?.username) {
+          setChatUnread((n) => n + 1)
+          notifyNewMessage(msg, chatAvatarsRef.current[msg.userId], () => setMainTab('chat'))
+        }
+      }
+    )
+
     return () => {
       unsubMatches()
       unsubLeaderboard()
       unsubEvent()
+      unsubChat()
     }
-  }, [loading, subscribe, roomId]) // re-run only after initial load completes
+  }, [loading, subscribe, roomId, user?.username]) // re-run only after initial load completes
+
+  // Track live WebSocket connection state to gate the chat send button.
+  useEffect(() => {
+    setWsConnected(isConnected())
+    const id = setInterval(() => setWsConnected(isConnected()), 2000)
+    return () => clearInterval(id)
+  }, [isConnected])
 
   // ── Standings: lazy-load the first time the tab is opened ──────────────────
   // Backend caches for ~3 min, so re-opening the tab won't spam the football API.
@@ -359,6 +441,57 @@ export default function RoomDetailPage() {
       })
       .finally(() => setScorerLoading(false))
   }, [mainTab, event?.id, scorerStats, scorerLoading])
+
+  // ── Chat: lazy-load history the first time the tab is opened; clear unread ──
+  useEffect(() => {
+    if (mainTab !== 'chat') return
+    setChatUnread(0)
+    if (chatLoadedRef.current) return
+
+    chatLoadedRef.current = true
+    setChatLoading(true)
+
+    // Members carry the avatars (once) so messages don't have to repeat them.
+    API.get(`/rooms/${roomId}/members`)
+      .then((r) => {
+        const map = {}
+        r.data.forEach((m) => { if (m.profilePic) map[m.userId] = m.profilePic })
+        setChatAvatars(map)
+      })
+      .catch((err) => console.error('Failed to load member avatars:', err))
+
+    API.get(`/rooms/${roomId}/messages`, { params: { limit: CHAT_PAGE } })
+      .then((r) => {
+        // Merge (not replace) so any live messages buffered before the first
+        // open aren't lost, and dedupe handles overlap.
+        setChatMessages((prev) => mergeMessages(prev, r.data))
+        setChatHasMore(r.data.length === CHAT_PAGE)
+      })
+      .catch((err) => {
+        console.error('Failed to load chat history:', err)
+        chatLoadedRef.current = false // allow a retry on next open
+      })
+      .finally(() => setChatLoading(false))
+  }, [mainTab, roomId])
+
+  const loadOlderChat = useCallback(() => {
+    if (chatLoadingMore || chatMessages.length === 0) return
+    const oldestId = chatMessages[0].id
+    setChatLoadingMore(true)
+    API.get(`/rooms/${roomId}/messages`, { params: { before: oldestId, limit: CHAT_PAGE } })
+      .then((r) => {
+        setChatMessages((prev) => mergeMessages(prev, r.data))
+        setChatHasMore(r.data.length === CHAT_PAGE)
+      })
+      .catch((err) => console.error('Failed to load older messages:', err))
+      .finally(() => setChatLoadingMore(false))
+  }, [roomId, chatMessages, chatLoadingMore])
+
+  const sendChat = useCallback((content) => {
+    // Server derives the sender from the authenticated socket; we only send text.
+    // The message returns to us via the /topic/chat broadcast (deduped by id).
+    publish(`/app/chat/${roomId}`, { content })
+  }, [publish, roomId])
 
   // A completed event locks predictions and reveals everyone's picks.
   const eventEnded = event?.status === 'COMPLETED'
@@ -474,17 +607,23 @@ export default function RoomDetailPage() {
             { id: 'leaderboard', label: 'Leaderboard' },
             { id: 'standings',   label: 'Standings' },
             { id: 'stats',       label: 'Top Scorers' },
+            { id: 'chat',        label: 'Chat' },
           ].map((t) => (
             <button
               key={t.id}
               onClick={() => setMainTab(t.id)}
-              className={`text-sm font-semibold px-4 sm:px-5 py-2 rounded-lg transition-all duration-200 ${
+              className={`relative text-sm font-semibold px-4 sm:px-5 py-2 rounded-lg transition-all duration-200 ${
                 mainTab === t.id
                   ? 'text-white bg-primary/20 shadow-sm'
                   : 'text-gray-500 hover:text-gray-300 hover:bg-white/[0.03]'
               }`}
             >
               {t.label}
+              {t.id === 'chat' && chatUnread > 0 && (
+                <span className="ml-1.5 inline-flex items-center justify-center min-w-[16px] h-4 px-1 text-[10px] font-bold text-white bg-red-500 rounded-full align-middle">
+                  {chatUnread > 9 ? '9+' : chatUnread}
+                </span>
+              )}
             </button>
           ))}
         </div>
@@ -736,6 +875,23 @@ export default function RoomDetailPage() {
                 scorers={scorerStats}
                 loading={scorerLoading && scorerStats === null}
                 eventEnded={eventEnded}
+              />
+            </motion.div>
+          )}
+
+          {/* ════════ CHAT TAB ════════ */}
+          {mainTab === 'chat' && (
+            <motion.div key="chat" {...fade}>
+              <ChatRoom
+                messages={chatMessages}
+                loading={chatLoading && chatMessages.length === 0}
+                hasMore={chatHasMore}
+                loadingMore={chatLoadingMore}
+                onLoadMore={loadOlderChat}
+                onSend={sendChat}
+                connected={wsConnected}
+                currentUsername={user?.username}
+                avatars={chatAvatars}
               />
             </motion.div>
           )}

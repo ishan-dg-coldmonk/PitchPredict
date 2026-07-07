@@ -21,8 +21,19 @@ export default {
         'float': 'float 6s ease-in-out infinite',
         'slide-up': 'slideUp 0.5s ease-out',
         'live-blink': 'liveBlink 1.2s step-end infinite',
+        // react-hot-toast custom-toast enter/leave transitions
+        'enter': 'toastEnter 0.25s ease-out',
+        'leave': 'toastLeave 0.2s ease-in forwards',
       },
       keyframes: {
+        toastEnter: {
+          '0%': { transform: 'translateX(120%)', opacity: '0' },
+          '100%': { transform: 'translateX(0)', opacity: '1' },
+        },
+        toastLeave: {
+          '0%': { transform: 'translateX(0)', opacity: '1' },
+          '100%': { transform: 'translateX(120%)', opacity: '0' },
+        },
         glow: {
           '0%': { boxShadow: '0 0 5px rgba(108,99,255,0.2), 0 0 20px rgba(108,99,255,0.1)' },
           '100%': { boxShadow: '0 0 10px rgba(108,99,255,0.4), 0 0 40px rgba(108,99,255,0.2)' },

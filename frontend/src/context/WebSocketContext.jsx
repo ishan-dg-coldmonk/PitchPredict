@@ -117,6 +117,26 @@ export function WebSocketProvider({ children }) {
     }
   }, [])
 
+  /**
+   * publish — send a message to a STOMP destination (client → server).
+   *
+   * @param {string} destination  e.g. '/app/chat/42'
+   * @param {object} body         serialised to JSON
+   * @returns {boolean}           true if sent, false if the socket wasn't ready
+   */
+  const publish = useCallback((destination, body) => {
+    const client = clientRef.current
+    if (!client?.connected) {
+      console.warn('[WS] publish skipped — not connected')
+      return false
+    }
+    client.publish({ destination, body: JSON.stringify(body) })
+    return true
+  }, [])
+
+  /** isConnected — snapshot of the live connection state (for send-button gating). */
+  const isConnected = useCallback(() => !!clientRef.current?.connected, [])
+
   // Clean up all subscriptions when provider unmounts
   useEffect(() => {
     return () => {
@@ -125,7 +145,7 @@ export function WebSocketProvider({ children }) {
   }, [])
 
   return (
-    <WebSocketContext.Provider value={{ connect, disconnect, subscribe }}>
+    <WebSocketContext.Provider value={{ connect, disconnect, subscribe, publish, isConnected }}>
       {children}
     </WebSocketContext.Provider>
   )

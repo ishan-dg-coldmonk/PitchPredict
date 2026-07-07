@@ -11,6 +11,32 @@ import { useAuth } from '../context/AuthContext'
 import API from '../api/axios'
 import toast from 'react-hot-toast'
 
+// Resize/compress an image file to a small square-ish thumbnail before storing.
+// Avatars are kept as base64 and rendered in leaderboards, chat, predictions,
+// etc., so bounding them to ~a few KB keeps every one of those payloads light.
+function resizeImage(file, maxSize = 256, quality = 0.85) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onerror = reject
+    reader.onload = () => {
+      const img = new Image()
+      img.onerror = reject
+      img.onload = () => {
+        const scale = Math.min(1, maxSize / Math.max(img.width, img.height))
+        const w = Math.round(img.width * scale)
+        const h = Math.round(img.height * scale)
+        const canvas = document.createElement('canvas')
+        canvas.width = w
+        canvas.height = h
+        canvas.getContext('2d').drawImage(img, 0, 0, w, h)
+        resolve(canvas.toDataURL('image/jpeg', quality))
+      }
+      img.src = reader.result
+    }
+    reader.readAsDataURL(file)
+  })
+}
+
 // ── Room Members modal ───────────────────────────────────────────────────────
 function RoomMembersModal({ roomId, roomName, onClose }) {
   const [members, setMembers] = useState([])
@@ -157,21 +183,17 @@ export default function ProfilePage() {
       return
     }
 
-    // Convert to base64
-    const reader = new FileReader()
-    reader.onload = async () => {
-      const base64 = reader.result // data:image/...;base64,...
-      setUploadingPic(true)
-      try {
-        await updateProfile({ profilePic: base64 })
-        toast.success('Profile picture updated!')
-      } catch (err) {
-        toast.error(err.response?.data?.error || 'Failed to update picture')
-      } finally {
-        setUploadingPic(false)
-      }
+    setUploadingPic(true)
+    try {
+      // Downscale to a small thumbnail so the stored/transmitted avatar stays tiny.
+      const base64 = await resizeImage(file)
+      await updateProfile({ profilePic: base64 })
+      toast.success('Profile picture updated!')
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Failed to update picture')
+    } finally {
+      setUploadingPic(false)
     }
-    reader.readAsDataURL(file)
   }
 
   const stats = [
