@@ -20,10 +20,9 @@ Knockout matches are handled end to end — regular time, extra time, and penalt
 
 - **Score predictions** with a dynamic per-match cutoff and knockout-aware penalty predictions.
 - **Real-time everything** — scores, statuses, leaderboard, and chat all pushed over WebSocket.
-- **Room chat** — a live, per-room chat with unread badges and toast notifications for new messages.
+- **Room chat** — a live, per-room chat with badges and notification features.
 - **AI pundit** — an on-demand, cached suggested scoreline drawing on FIFA rankings and recent form.
 - **Standings & top scorers** — served from our own database, refreshed on a schedule.
-- **End-of-event celebration** — World Champions and Golden Boot cards when the admin closes the event.
 
 ---
 
