@@ -6,11 +6,11 @@
 
 ## 🎯 How It Works
 
-1. A tournament (event) is set up and its fixtures + standings are pulled from a football data provider.
+1. A tournament is set up and its fixtures + standings are pulled from a football data provider.
 2. Players join a private room and **predict the scoreline** for each match before its cutoff (5 minutes before kick-off) — with an optional **AI pundit** suggesting a scoreline based on form and rankings.
-3. As matches play out, **live scores and status changes stream to everyone in real time** — no page refresh.
+3. As matches play out, **live scores and status changes stream to everyone in real time**.
 4. When a match finishes, **points are calculated automatically** and the room leaderboard updates live.
-5. Members **chat in real time** inside each room, follow **standings** and **top scorers**, and — once the event ends — see the **champion and Golden Boot** celebrated on flashy cards.
+5. Members can **chat in real time** inside each room.
 
 Knockout matches are handled end to end — regular time, extra time, and penalty shootouts each display correctly, and predicting a knockout tie prompts an extra penalty-shootout prediction.
 
