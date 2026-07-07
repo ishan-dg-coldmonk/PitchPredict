@@ -2,6 +2,7 @@ package com.pitchpredict.controller;
 
 import com.pitchpredict.dto.EventDTO;
 import com.pitchpredict.dto.MatchDTO;
+import com.pitchpredict.dto.ScorerDTO;
 import com.pitchpredict.dto.StandingsGroupDTO;
 import com.pitchpredict.service.EventService;
 import com.pitchpredict.service.FootballDataService;
@@ -53,5 +54,11 @@ public class EventController {
         List<StandingsGroupDTO> standings = footballDataService.getStandings(id);
         log.info("[API] GET /api/events/{}/standings ✓ - {} group(s) returned", id, standings.size());
         return ResponseEntity.ok(standings);
+    }
+
+    @GetMapping("/{id}/scorers")
+    public ResponseEntity<List<ScorerDTO>> getEventScorers(@PathVariable Long id) {
+        log.info("[API] GET /api/events/{}/scorers", id);
+        return ResponseEntity.ok(footballDataService.getScorers(id));
     }
 }

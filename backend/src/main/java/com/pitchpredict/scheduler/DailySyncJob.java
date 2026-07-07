@@ -57,6 +57,13 @@ public class DailySyncJob {
             } catch (Exception e) {
                 log.warn("[DailySync] event {} — standings sync FAILED: {}", id, e.getMessage());
             }
+
+            try {
+                int rows = footballDataService.syncScorers(id);
+                log.info("[DailySync] event {} — scorer rows: {}", id, rows);
+            } catch (Exception e) {
+                log.warn("[DailySync] event {} — scorers sync FAILED: {}", id, e.getMessage());
+            }
         }
 
         log.info("[DailySync] Done");

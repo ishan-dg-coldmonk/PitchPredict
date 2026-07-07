@@ -120,6 +120,14 @@ public class AdminController {
         return ResponseEntity.ok(Map.of("synced", count));
     }
 
+    @PostMapping("/events/{id}/sync-scorers")
+    public ResponseEntity<Map<String, Object>> syncScorers(@PathVariable Long id) {
+        log.info("[API] POST /api/admin/events/{}/sync-scorers", id);
+        int count = footballDataService.syncScorers(id);
+        log.info("[API] POST /api/admin/events/{}/sync-scorers ✓ - {} row(s)", id, count);
+        return ResponseEntity.ok(Map.of("synced", count));
+    }
+
     @PostMapping("/events/{id}/activate")
     public ResponseEntity<EventDTO> activateEvent(@PathVariable Long id) {
         log.info("[API] POST /api/admin/events/{}/activate", id);

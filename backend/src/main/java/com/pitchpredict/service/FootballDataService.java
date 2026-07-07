@@ -3,9 +3,12 @@ package com.pitchpredict.service;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.pitchpredict.dto.MatchGoalDTO;
+import com.pitchpredict.dto.ScorerDTO;
 import com.pitchpredict.dto.StandingRowDTO;
 import com.pitchpredict.dto.StandingsGroupDTO;
+import com.pitchpredict.entity.ScorerRow;
 import com.pitchpredict.entity.StandingRow;
+import com.pitchpredict.repository.ScorerRowRepository;
 import com.pitchpredict.repository.StandingRowRepository;
 import com.pitchpredict.entity.Event;
 import com.pitchpredict.entity.Match;
@@ -34,6 +37,7 @@ public class FootballDataService {
     private final MatchRepository matchRepository;
     private final EventRepository eventRepository;
     private final StandingRowRepository standingRowRepository;
+    private final ScorerRowRepository scorerRowRepository;
     private final ObjectMapper objectMapper;
 
     @Value("${football-data.api-key}")
@@ -191,6 +195,89 @@ public class FootballDataService {
             groups.add(StandingsGroupDTO.builder().group(group).table(table).build());
         }
         return groups;
+    }
+
+    // ── Scorers: served from our DB (top 10 by goals) ────────────────────────
+
+    /** Reads persisted scorers and returns the top 10 by goals. */
+    public List<ScorerDTO> getScorers(Long eventId) {
+        return scorerRowRepository.findByEventId(eventId).stream()
+                .sorted(Comparator.comparingInt(ScorerRow::getGoals).reversed()
+                        .thenComparing(Comparator.comparingInt(ScorerRow::getPlayedMatches)))
+                .limit(10).map(this::toScorerDTO).toList();
+    }
+
+    /** Fetches the scorers list from the API and replaces the persisted rows. One API call. */
+    @Transactional
+    public int syncScorers(Long eventId) {
+        Event event = eventRepository.findById(eventId)
+                .orElseThrow(() -> ApiException.notFound("Event not found"));
+        String compId = event.getApiCompId();
+        if (compId == null || compId.isBlank()) {
+            throw ApiException.badRequest("Event has no API competition ID configured");
+        }
+
+        List<ScorerRow> rows = new ArrayList<>();
+        try {
+            HttpHeaders headers = new HttpHeaders();
+            headers.set("X-Auth-Token", apiKey);
+            HttpEntity<String> entity = new HttpEntity<>(headers);
+
+            String url = baseUrl + "/competitions/" + compId + "/scorers?limit=50";
+            ResponseEntity<String> response = restTemplate.exchange(url, HttpMethod.GET, entity, String.class);
+            JsonNode root = objectMapper.readTree(response.getBody());
+
+            LocalDateTime now = LocalDateTime.now();
+            for (JsonNode s : root.path("scorers")) {
+                JsonNode p = s.path("player");
+                JsonNode t = s.path("team");
+                rows.add(ScorerRow.builder()
+                        .eventId(eventId)
+                        .playerName(p.path("name").asText(null))
+                        .playerNationality(p.path("nationality").asText(null))
+                        .teamName(t.path("name").asText(null))
+                        .teamTla(t.path("tla").asText(null))
+                        .teamCrest(t.path("crest").asText(null))
+                        .goals(s.path("goals").asInt(0))
+                        .assists(s.path("assists").isNull() ? 0 : s.path("assists").asInt(0))
+                        .penalties(s.path("penalties").isNull() ? null : s.path("penalties").asInt())
+                        .playedMatches(s.path("playedMatches").asInt(0))
+                        .lastUpdated(now)
+                        .build());
+            }
+        } catch (HttpStatusCodeException e) {
+            int status = e.getStatusCode().value();
+            log.error("[Scorers] API error {} for comp {}: {}", status, compId, e.getResponseBodyAsString());
+            if (status == 401 || status == 403) {
+                throw ApiException.badRequest(
+                        "Football data API key is missing, invalid, or disabled — check FOOTBALL_DATA_API_KEY.");
+            }
+            if (status == 429) {
+                throw ApiException.badRequest("Football data API rate limit hit — wait a minute and retry.");
+            }
+            throw ApiException.badRequest("Football data API error (HTTP " + status + ")");
+        } catch (Exception e) {
+            throw ApiException.badRequest("Failed to fetch scorers: " + e.getMessage());
+        }
+
+        scorerRowRepository.deleteByEventId(eventId);
+        scorerRowRepository.saveAll(rows);
+        log.info("[Scorers] synced {} row(s) for event {} (comp {})", rows.size(), eventId, compId);
+        return rows.size();
+    }
+
+    private ScorerDTO toScorerDTO(ScorerRow r) {
+        return ScorerDTO.builder()
+                .playerName(r.getPlayerName())
+                .playerNationality(r.getPlayerNationality())
+                .teamName(r.getTeamName())
+                .teamTla(r.getTeamTla())
+                .teamCrest(r.getTeamCrest())
+                .goals(r.getGoals())
+                .assists(r.getAssists())
+                .penalties(r.getPenalties())
+                .playedMatches(r.getPlayedMatches())
+                .build();
     }
 
     // ── Admin: bulk sync all matches for an event ────────────────────────────
