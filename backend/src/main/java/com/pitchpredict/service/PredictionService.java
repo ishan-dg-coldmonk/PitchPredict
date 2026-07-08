@@ -52,6 +52,12 @@ public class PredictionService {
             throw ApiException.badRequest("This event has ended — predictions are closed");
         }
 
+        // Can't predict a fixture whose teams aren't confirmed yet (e.g. TBD knockout tie).
+        if (MatchService.teamsUndetermined(match)) {
+            log.warn("[Prediction] REJECTED - teams undetermined - userId={} matchId={}", userId, matchId);
+            throw ApiException.badRequest("Both teams must be decided before you can predict this match");
+        }
+
         // Dynamic prediction window check — backend is the authority.
         // The DB no longer stores a predictionOpen flag.
         if (match.getStatus() != MatchStatus.SCHEDULED) {

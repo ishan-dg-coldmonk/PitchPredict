@@ -43,8 +43,12 @@ export default function PredictionModal({ match, roomId, eventId, existing, even
 
   const window_ = usePredictionWindow(match)
   const { minutesLeft, secondsLeft, msUntilClose } = window_
+  // A fixture whose teams aren't confirmed yet (e.g. a TBD knockout tie) can't
+  // be predicted — and gets no AI suggestion.
+  const isTbd = (t) => !t || t.trim() === '' || t.trim().toUpperCase() === 'TBD'
+  const teamsDecided = !isTbd(match.homeTeam) && !isTbd(match.awayTeam)
   // A completed event locks predictions regardless of the per-match window.
-  const canPredict = window_.canPredict && !eventEnded
+  const canPredict = window_.canPredict && !eventEnded && teamsDecided
 
   const isFinished = match.status === 'FINISHED'
   const isLive     = match.status === 'LIVE'
@@ -142,10 +146,11 @@ export default function PredictionModal({ match, roomId, eventId, existing, even
   }
 
   const closedMsg = () => {
-    if (eventEnded) return { icon: '🏆', title: 'Event has ended',    sub: 'Predictions are closed — check the final leaderboard' }
-    if (isFinished) return { icon: '🏁', title: 'Match has ended',   sub: 'Predictions are no longer accepted' }
-    if (isLive)     return { icon: '🔴', title: 'Match is underway', sub: 'Prediction window closed before kick-off' }
-    return              { icon: '🔒', title: 'Predictions closed',  sub: 'Window closes 5 min before kick-off' }
+    if (eventEnded)     return { icon: '🏆', title: 'Event has ended',       sub: 'Predictions are closed — check the final leaderboard' }
+    if (!teamsDecided)  return { icon: '🎲', title: 'Teams not decided yet',  sub: 'Predictions open once both teams are confirmed' }
+    if (isFinished)     return { icon: '🏁', title: 'Match has ended',       sub: 'Predictions are no longer accepted' }
+    if (isLive)         return { icon: '🔴', title: 'Match is underway',     sub: 'Prediction window closed before kick-off' }
+    return                     { icon: '🔒', title: 'Predictions closed',    sub: 'Window closes 5 min before kick-off' }
   }
 
   // Show a countdown warning when fewer than 10 min remain

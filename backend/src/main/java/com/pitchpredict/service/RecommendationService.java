@@ -65,6 +65,8 @@ public class RecommendationService {
 
         Match match = matchRepository.findById(matchId).orElse(null);
         if (match == null || match.getStatus() != MatchStatus.SCHEDULED) return null;
+        // No suggestion until both teams are confirmed — nothing to reason about.
+        if (MatchService.teamsUndetermined(match)) return null;
 
         List<Match> finished = matchRepository.findByEventIdOrderByMatchDateAsc(match.getEventId()).stream()
                 .filter(m -> m.getStatus() == MatchStatus.FINISHED && m.getHomeScore() != null)

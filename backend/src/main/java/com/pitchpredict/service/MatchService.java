@@ -89,6 +89,10 @@ public class MatchService {
      *   - LIVE, FINISHED, SUSPENDED etc. are always false.
      */
     public boolean computePredictionOpen(Match match) {
+        if (teamsUndetermined(match)) {
+            log.debug("[Match] predictionOpen=false - matchId={} (teams TBD)", match.getId());
+            return false;
+        }
         if (match.getStatus() != MatchStatus.SCHEDULED) {
             log.debug("[Match] predictionOpen=false - matchId={} status={} (not SCHEDULED)",
                     match.getId(), match.getStatus());
@@ -99,6 +103,19 @@ public class MatchService {
         log.debug("[Match] predictionOpen={} - matchId={} matchDate={} deadline={}",
                 open, match.getId(), match.getMatchDate(), deadline);
         return open;
+    }
+
+    /**
+     * True when either side is still a placeholder (e.g. an undecided knockout
+     * fixture the provider reports with no team name). Such a match can't be
+     * predicted and gets no AI suggestion until both teams are confirmed.
+     */
+    public static boolean teamsUndetermined(Match match) {
+        return isPlaceholderTeam(match.getHomeTeam()) || isPlaceholderTeam(match.getAwayTeam());
+    }
+
+    private static boolean isPlaceholderTeam(String team) {
+        return team == null || team.isBlank() || team.trim().equalsIgnoreCase("TBD");
     }
 
     private List<MatchGoalDTO> parseGoals(String goalsJson) {
