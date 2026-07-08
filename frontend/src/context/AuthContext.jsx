@@ -56,6 +56,33 @@ export function AuthProvider({ children }) {
     return data
   }
 
+  // Persist a logged-in AuthResponse and open the WebSocket (shared by all flows).
+  const establishSession = (data) => {
+    localStorage.setItem('pp_token', data.token)
+    localStorage.setItem('pp_user', JSON.stringify(data))
+    setUser(data)
+    connect()
+  }
+
+  /**
+   * googleAuth — exchange a Google access token for a session.
+   * Returns the raw response; if `newUser` is true the caller must collect a
+   * username and call googleComplete (no session is established yet).
+   */
+  const googleAuth = async (accessToken) => {
+    const res = await API.post('/auth/google', { accessToken })
+    const data = res.data
+    if (!data.newUser && data.auth) establishSession(data.auth)
+    return data
+  }
+
+  // Finish a first-time Google signup with the chosen username (and optional avatar).
+  const googleComplete = async (accessToken, username, profilePic) => {
+    const res = await API.post('/auth/google/complete', { accessToken, username, profilePic })
+    establishSession(res.data)
+    return res.data
+  }
+
   const logout = () => {
     disconnect()  // cleanly close WebSocket before clearing credentials
     localStorage.removeItem('pp_token')
@@ -82,7 +109,7 @@ export function AuthProvider({ children }) {
   }
 
   return (
-    <AuthContext.Provider value={{ user, login, signup, logout, loading, updateProfile }}>
+    <AuthContext.Provider value={{ user, login, signup, googleAuth, googleComplete, logout, loading, updateProfile }}>
       {children}
     </AuthContext.Provider>
   )

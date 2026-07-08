@@ -3,6 +3,7 @@ import { Link, useNavigate, Navigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { Zap, Eye, EyeOff, Home } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
+import GoogleAuthPanel from '../components/GoogleAuthPanel'
 import toast from 'react-hot-toast'
 
 export default function LoginPage() {
@@ -126,7 +127,7 @@ export default function LoginPage() {
           <button
             type="submit"
             disabled={submitting}
-            className="btn-primary w-full flex items-center justify-center mt-2"
+            className="btn-primary w-full flex items-center justify-center !mt-10"
           >
             {submitting
               ? <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
@@ -134,6 +135,8 @@ export default function LoginPage() {
             }
           </button>
         </form>
+
+        <GoogleAuthPanel label="Sign in with Google" />
 
         <p className="text-center text-sm text-gray-500 mt-6">
           Don't have an account?{' '}
