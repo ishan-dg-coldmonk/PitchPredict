@@ -49,7 +49,7 @@ Each match is worth up to **17 points**:
 | Real-time | STOMP over SockJS (WebSocket) |
 | Backend | Spring Boot 3.3, Java 17, Spring Security |
 | Database | PostgreSQL (production) · H2 in-memory (local dev) |
-| Auth | JWT (REST + WebSocket) · Google Sign-In |
+| Auth | JWT (REST + WebSocket) · Google OAuth |
 | Data & AI | football-data.org (fixtures, standings, scorers) · OpenRouter (AI pundit) |
 | Deploy | EC2 (backend) · Netlify (frontend) |
 
@@ -68,7 +68,7 @@ A single-page app backed by a stateless API, with a real-time channel layered on
             │
       Spring Boot API ── PostgreSQL / H2
             │
-            ├── Auth ──▶ password or Google Sign-In (verified) → issues JWT
+            ├── Auth ──▶ password or Google OAuth → issues JWT
             │
             ├── Live-score scheduler  ──▶ polls the football data
             │      (during match window)   provider, persists changes,
@@ -121,7 +121,6 @@ member ──send──▶ server (auth + validate + save) ──broadcast──
 - **Authenticated WebSocket chat** — the socket verifies a JWT on connect and gates each room's chat to its members, so identity can't be spoofed and non-members can't read a room's chat.
 - **Lightweight chat payloads** — messages never carry avatars; clients resolve them once from the member list, and uploaded avatars are downscaled to small thumbnails, keeping the live channel fast for a full room.
 - **AI pundit on demand** — the suggested scoreline is generated only when asked and cached per match, so the leaderboard stays fast and external AI calls stay minimal.
-- **Google Sign-In, one identity** — Google tokens are verified server-side and minted into the same JWT the rest of the app uses; a Google login on an existing email links to that account rather than duplicating it.
 
 ---
 
@@ -144,7 +143,7 @@ Starts on `http://localhost:8080` with an in-memory H2 database (dev profile).
 
 > Optional:
 > - `OPENROUTER_API_KEY` — enables the AI pundit's suggested scoreline (without it, requesting one just reports the pundit is unavailable).
-> - `GOOGLE_CLIENT_ID` — enables Google Sign-In (must match the frontend's `VITE_GOOGLE_CLIENT_ID`).
+> - `GOOGLE_CLIENT_ID` — enables Google OAuth (must match the frontend's `VITE_GOOGLE_CLIENT_ID`).
 > - `JWT_SECRET` — overrides the built-in dev signing key.
 
 ### Frontend
