@@ -1,6 +1,9 @@
 package com.pitchpredict.controller;
 
 import com.pitchpredict.dto.AuthResponse;
+import com.pitchpredict.dto.GoogleAuthResponse;
+import com.pitchpredict.dto.GoogleCompleteRequest;
+import com.pitchpredict.dto.GoogleLoginRequest;
 import com.pitchpredict.dto.LoginRequest;
 import com.pitchpredict.dto.SignupRequest;
 import com.pitchpredict.service.AuthService;
@@ -35,6 +38,29 @@ public class AuthController {
         AuthResponse res = authService.login(request);
         log.info("[API] POST /api/auth/login ✓ - userId={}", res.getId());
         return ResponseEntity.ok(res);
+    }
+
+    @PostMapping("/google")
+    public ResponseEntity<GoogleAuthResponse> google(@Valid @RequestBody GoogleLoginRequest request) {
+        log.info("[API] POST /api/auth/google");
+        GoogleAuthResponse res = authService.googleAuth(request.getAccessToken());
+        log.info("[API] POST /api/auth/google ✓ - newUser={}", res.isNewUser());
+        return ResponseEntity.ok(res);
+    }
+
+    @PostMapping("/google/complete")
+    public ResponseEntity<AuthResponse> googleComplete(@Valid @RequestBody GoogleCompleteRequest request) {
+        log.info("[API] POST /api/auth/google/complete - username={}", request.getUsername());
+        AuthResponse res = authService.googleComplete(
+                request.getAccessToken(), request.getUsername(), request.getProfilePic());
+        log.info("[API] POST /api/auth/google/complete ✓ - userId={}", res.getId());
+        return ResponseEntity.ok(res);
+    }
+
+    @GetMapping("/username-available")
+    public ResponseEntity<Map<String, Boolean>> usernameAvailable(@RequestParam String username) {
+        boolean available = authService.isUsernameAvailable(username);
+        return ResponseEntity.ok(Map.of("available", available));
     }
 
     @GetMapping("/me")

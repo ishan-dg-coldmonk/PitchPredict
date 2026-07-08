@@ -26,8 +26,10 @@ public class TeamRankingSeeder implements CommandLineRunner {
 
     @Override
     public void run(String... args) {
-        if (repo.count() > 0) return;
-
+        // TLAs must match football-data.org exactly (that's what we look up rankings
+        // by). All 48 FIFA World Cup 2026 participants are covered below; a few extra
+        // strong nations are kept for good measure. Note Saudi Arabia is "KSA" (not
+        // "SAU") to match the provider.
         List<TeamRanking> seed = List.of(
                 r("ARG", 1, 1886), r("ESP", 2, 1875), r("FRA", 3, 1870), r("ENG", 4, 1820),
                 r("BRA", 5, 1776), r("POR", 6, 1772), r("NED", 7, 1754), r("BEL", 8, 1740),
@@ -42,11 +44,23 @@ public class TeamRankingSeeder implements CommandLineRunner {
                 r("CZE", 41, 1430), r("NOR", 42, 1424), r("GRE", 43, 1418), r("SCO", 44, 1410),
                 r("CMR", 45, 1404), r("GHA", 46, 1398), r("RSA", 47, 1392), r("CRC", 48, 1386),
                 r("PAN", 49, 1380), r("VEN", 50, 1374), r("JAM", 51, 1360), r("HON", 52, 1350),
-                r("QAT", 53, 1400), r("SAU", 54, 1420), r("NZL", 55, 1300), r("BIH", 56, 1440),
-                r("HUN", 57, 1490), r("ROU", 58, 1470), r("COD", 59, 1360), r("CPV", 60, 1350)
+                r("QAT", 53, 1400), r("NZL", 55, 1300), r("BIH", 56, 1440),
+                r("HUN", 57, 1490), r("ROU", 58, 1470), r("COD", 59, 1360), r("CPV", 60, 1350),
+                // World Cup 2026 qualifiers missing from the original top-60 seed:
+                r("UZB", 61, 1490), r("IRQ", 62, 1470), r("KSA", 63, 1460),
+                r("JOR", 64, 1440), r("CUW", 82, 1330), r("HAI", 83, 1325)
         );
-        repo.saveAll(seed);
-        log.info("[Seed] Inserted {} FIFA team rankings", seed.size());
+
+        // Idempotent: insert only rows that don't exist yet, so re-deploys pick up
+        // newly-added teams without clobbering any rows an admin has edited.
+        int added = 0;
+        for (TeamRanking t : seed) {
+            if (!repo.existsById(t.getTla())) {
+                repo.save(t);
+                added++;
+            }
+        }
+        if (added > 0) log.info("[Seed] Inserted {} FIFA team ranking(s)", added);
     }
 
     private static TeamRanking r(String tla, int rank, int points) {

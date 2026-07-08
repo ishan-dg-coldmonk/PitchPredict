@@ -1,5 +1,6 @@
 package com.pitchpredict.entity;
 
+import com.pitchpredict.enums.AuthProvider;
 import com.pitchpredict.enums.Role;
 import jakarta.persistence.*;
 import lombok.*;
@@ -21,8 +22,19 @@ public class User {
     @Column(length = 100, unique = true, nullable = false)
     private String email;
 
-    @Column(nullable = false)
+    /** Null for OAuth-only accounts (e.g. Google) — they have no local password. */
+    @Column
     private String password;
+
+    /** How this account authenticates. */
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false)
+    @Builder.Default
+    private AuthProvider authProvider = AuthProvider.LOCAL;
+
+    /** Google's stable subject id ("sub") once linked; null for password-only accounts. */
+    @Column(unique = true)
+    private String providerId;
 
     @Column(length = 100)
     private String fullName;
