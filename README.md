@@ -68,6 +68,8 @@ A single-page app backed by a stateless API, with a real-time channel layered on
             │
       Spring Boot API ── PostgreSQL / H2
             │
+            ├── Auth ──▶ password or Google Sign-In (verified) → issues JWT
+            │
             ├── Live-score scheduler  ──▶ polls the football data
             │      (during match window)   provider, persists changes,
             │                               and broadcasts them over WebSocket
