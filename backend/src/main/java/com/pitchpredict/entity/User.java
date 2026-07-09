@@ -39,7 +39,9 @@ public class User {
     @Column(length = 100)
     private String fullName;
 
-    @Lob
+    // Base64 thumbnail (or a Google avatar URL). Plain TEXT — NOT @Lob: on
+    // PostgreSQL @Lob reads as a large object, which fails in auto-commit mode
+    // (e.g. the per-request findByUsername in the auth filter).
     @Column(columnDefinition = "TEXT")
     private String profilePic;
 

@@ -19,14 +19,14 @@ public class Event {
     @Column(length = 200, nullable = false)
     private String title;
 
-    @Lob
+    // Plain TEXT, not @Lob (see User.profilePic) — @Lob on Postgres reads as a
+    // large object and fails in auto-commit mode.
     @Column(columnDefinition = "TEXT")
     private String description;
 
     @Column(length = 50)
     private String sport;
 
-    @Lob
     @Column(columnDefinition = "TEXT")
     private String bannerUrl;
 
