@@ -51,7 +51,7 @@ Each match is worth up to **17 points**:
 | Database | PostgreSQL (production) • H2 in-memory (local dev) |
 | Auth | JWT (REST + WebSocket) • Google OAuth |
 | Data & AI | football-data.org (fixtures, standings, scorers) • OpenRouter (AI pundit) |
-| Deploy | Render (backend) • Netlify (frontend) • NeonDB (database) |
+| Deploy | Render (backend) • Netlify (frontend) • NeonDB (database)  • Docker |
 
 ---
 
