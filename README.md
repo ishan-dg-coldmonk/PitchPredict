@@ -45,13 +45,13 @@ Each match is worth up to **17 points**:
 
 | Layer | Technology |
 |---|---|
-| Frontend | React 19, Vite, Tailwind CSS, Framer Motion |
+| Frontend | React 19, Vite, Tailwind CSS |
 | Real-time | STOMP over SockJS (WebSocket) |
 | Backend | Spring Boot 3.3, Java 17, Spring Security |
-| Database | PostgreSQL (production) · H2 in-memory (local dev) |
-| Auth | JWT (REST + WebSocket) · Google OAuth |
-| Data & AI | football-data.org (fixtures, standings, scorers) · OpenRouter (AI pundit) |
-| Deploy | EC2 (backend) · Netlify (frontend) |
+| Database | PostgreSQL (production) • H2 in-memory (local dev) |
+| Auth | JWT (REST + WebSocket) • Google OAuth |
+| Data & AI | football-data.org (fixtures, standings, scorers) • OpenRouter (AI pundit) |
+| Deploy | Oracle Cloud (backend) • Netlify (frontend) • NeonDB (database) |
 
 ---
 
