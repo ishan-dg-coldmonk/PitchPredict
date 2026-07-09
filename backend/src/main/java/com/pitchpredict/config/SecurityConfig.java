@@ -34,6 +34,8 @@ public class SecurityConfig {
             .exceptionHandling(ex -> ex.authenticationEntryPoint(new HttpStatusEntryPoint(HttpStatus.UNAUTHORIZED)))
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers("/api/auth/**").permitAll()
+                // Public liveness probe for uptime pingers / keep-alive
+                .requestMatchers("/health").permitAll()
                 .requestMatchers("/h2-console/**").permitAll()
                 // Spring forwards unhandled exceptions to /error to render a body.
                 // Without permitting it, that ERROR dispatch is itself blocked as an
