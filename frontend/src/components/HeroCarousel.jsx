@@ -57,8 +57,8 @@ export default function HeroCarousel({ events }) {
                     </div>
                   )}
 
-                  <Link to={`/events/${event.id}`} className="btn-primary inline-flex items-center gap-2">
-                    View Event <ArrowRight size={18} />
+                  <Link to={`/events/${event.id}`} className="btn-primary inline-flex items-center gap-2 !text-sm !px-4 !py-2 sm:!text-base sm:!px-6 sm:!py-3">
+                    View Event <ArrowRight size={16} className="sm:w-[18px] sm:h-[18px]" />
                   </Link>
                 </motion.div>
               </div>
