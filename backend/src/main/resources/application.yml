@@ -23,4 +23,4 @@ google:
 openrouter:
   api-key: ${OPENROUTER_API_KEY:}
   base-url: https://openrouter.ai/api/v1
-  model: ${OPENROUTER_MODEL:poolside/laguna-xs-2.1:free}
+  model: ${OPENROUTER_MODEL:meta-llama/llama-3.3-70b-instruct:free}
