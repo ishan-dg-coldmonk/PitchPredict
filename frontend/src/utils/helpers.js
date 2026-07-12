@@ -1,3 +1,38 @@
+// ── Points ─────────────────────────────────────────────────────────────────
+//
+// Mirrors the backend PointsCalculationService exactly so we can show LIVE
+// projected points ("if it ends now") from the current score. Keep in sync with
+// PointsCalculationService.calculatePointsForMatch.
+//
+//   base    = max(0, 10 − 2 × (|Δhome| + |Δaway|))         → up to 10
+//   outcome = +4 if the W/D/L result matches
+//   gd      = +3 if the exact goal difference matches
+//   penalty = shootout only: +5 right advancer, +max(0,3−penDiff) closeness  → up to +8
+export function computePoints(pred, actualHome, actualAway, opts = {}) {
+  if (pred == null || actualHome == null || actualAway == null) return null
+  const ph = pred.predictedHomeScore
+  const pa = pred.predictedAwayScore
+  if (ph == null || pa == null) return null
+
+  const diff    = Math.abs(ph - actualHome) + Math.abs(pa - actualAway)
+  const base    = Math.max(0, 10 - 2 * diff)
+  const outcome = Math.sign(ph - pa) === Math.sign(actualHome - actualAway) ? 4 : 0
+  const gd      = (ph - pa) === (actualHome - actualAway) ? 3 : 0
+
+  let penaltyBonus = 0
+  const { penaltyHome, penaltyAway, duration } = opts
+  const shootout = duration === 'PENALTY_SHOOTOUT' && penaltyHome != null && penaltyAway != null
+  if (shootout && ph === pa && pred.predictedPenaltyHome != null && pred.predictedPenaltyAway != null) {
+    const penWinner = Math.sign(pred.predictedPenaltyHome - pred.predictedPenaltyAway)
+                      === Math.sign(penaltyHome - penaltyAway) ? 5 : 0
+    const penDiff = Math.abs(pred.predictedPenaltyHome - penaltyHome)
+                    + Math.abs(pred.predictedPenaltyAway - penaltyAway)
+    penaltyBonus = penWinner + Math.max(0, 3 - penDiff)
+  }
+
+  return { base, outcome, gd, penaltyBonus, total: base + outcome + gd + penaltyBonus }
+}
+
 // ── Date / time ──────────────────────────────────────────────────────────────
 
 export function formatDate(dateStr) {

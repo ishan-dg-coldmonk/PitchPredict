@@ -14,7 +14,7 @@ import LiveIndicator from '../components/LiveIndicator'
 import toast from 'react-hot-toast'
 import { useAuth } from '../context/AuthContext'
 import { useWebSocket } from '../context/WebSocketContext'
-import { getESTDayKey, getDayLabelEST, formatTimeIST, todayESTKey, effectiveStatus } from '../utils/helpers'
+import { getESTDayKey, getDayLabelEST, formatTimeIST, todayESTKey, effectiveStatus, computePoints } from '../utils/helpers'
 import API from '../api/axios'
 
 // ── animation helpers ────────────────────────────────────────────────────────
@@ -119,6 +119,27 @@ function AllPredictionsModal({ match, roomId, onClose }) {
 
   const isLive     = match.status === 'LIVE'
   const isFinished = match.status === 'FINISHED'
+  const liveScored = isLive && match.homeScore !== null
+
+  // Attach a points breakdown to each prediction — actual once finished, or
+  // "if it ends now" projected from the live score — then order it like a live
+  // mini-leaderboard. Recomputes on every goal the WebSocket pushes.
+  const scoredPreds = useMemo(() => {
+    const opts = { penaltyHome: match.penaltyHome, penaltyAway: match.penaltyAway, duration: match.duration }
+    const rows = preds.map((p) => {
+      let breakdown = null
+      if (isFinished && p.points != null) {
+        breakdown = { base: p.basePoints ?? 0, outcome: p.outcomeBonus ?? 0, gd: p.gdBonus ?? 0, penaltyBonus: p.penaltyBonus ?? 0, total: p.points }
+      } else if (liveScored) {
+        breakdown = computePoints(p, match.homeScore, match.awayScore, opts)
+      }
+      return { ...p, breakdown }
+    })
+    if (isLive || isFinished) {
+      rows.sort((a, b) => (b.breakdown?.total ?? -1) - (a.breakdown?.total ?? -1))
+    }
+    return rows
+  }, [preds, isLive, isFinished, liveScored, match.homeScore, match.awayScore, match.penaltyHome, match.penaltyAway, match.duration])
 
   return (
     <motion.div
@@ -153,20 +174,26 @@ function AllPredictionsModal({ match, roomId, onClose }) {
           </div>
         )}
 
+        {liveScored && (
+          <div className="text-[11px] text-yellow-400/90 mb-3 flex items-center gap-1.5">
+            ⚡ Projected points if it ended now — updates on every goal.
+          </div>
+        )}
+
         {loading ? (
           <div className="py-8 flex justify-center">
             <div className="w-8 h-8 border-4 border-primary/30 border-t-primary rounded-full animate-spin" />
           </div>
-        ) : preds.length === 0 ? (
+        ) : scoredPreds.length === 0 ? (
           <p className="text-gray-500 text-center py-8 text-sm">No predictions for this match yet</p>
         ) : (
           <div className="space-y-2.5">
-            {preds.map((p) => (
+            {scoredPreds.map((p) => (
               <div key={p.id}
                 className="flex items-center gap-3 bg-white/[0.04] rounded-xl p-3.5 border border-white/[0.04]">
                 <div className="w-9 h-9 rounded-full bg-gradient-to-br from-primary/30 to-secondary/30 flex items-center justify-center text-white text-xs font-bold overflow-hidden flex-shrink-0">
                   {p.profilePic
-                    ? <img src={p.profilePic} alt="" className="w-full h-full object-cover" />
+                    ? <img src={p.profilePic} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                     : p.username?.[0]?.toUpperCase()
                   }
                 </div>
@@ -181,11 +208,19 @@ function AllPredictionsModal({ match, roomId, onClose }) {
                     </span>
                   )}
                 </div>
-                <div className="text-right min-w-[50px] sm:min-w-[60px]">
-                  <div className="text-accent font-bold text-xs sm:text-sm">{p.points ?? 0} pts</div>
-                  <div className="text-[9px] sm:text-[10px] text-gray-500 whitespace-nowrap">
-                    B:{p.basePoints ?? 0} R:{p.outcomeBonus ?? 0} G:{p.gdBonus ?? 0}{p.penaltyBonus ? ` P:${p.penaltyBonus}` : ''}
-                  </div>
+                <div className="text-right min-w-[56px] sm:min-w-[64px]">
+                  {p.breakdown ? (
+                    <>
+                      <div className={`font-bold text-xs sm:text-sm ${isLive ? 'text-yellow-400' : 'text-accent'}`}>
+                        {p.breakdown.total} pts
+                      </div>
+                      <div className="text-[9px] sm:text-[10px] text-gray-500 whitespace-nowrap">
+                        {isLive
+                          ? 'if it ends now'
+                          : `B:${p.breakdown.base} R:${p.breakdown.outcome} G:${p.breakdown.gd}${p.breakdown.penaltyBonus ? ` P:${p.breakdown.penaltyBonus}` : ''}`}
+                      </div>
+                    </>
+                  ) : null}
                 </div>
               </div>
             ))}
@@ -499,10 +534,14 @@ export default function RoomDetailPage() {
 
   // ── Prediction view eligibility ───────────────────────────────────────────
   const canViewPredictions = (match) => {
-    if (eventEnded)                  return true
-    if (match.status === 'FINISHED') return true
-    if (match.status === 'LIVE')     return true
-    // predictionOpen is dynamically computed in MatchService.toDTO()
+    if (eventEnded) return true
+    // Once kick-off is reached (match live or finished), predictions are already
+    // locked — so the whole room can see everyone's picks. effectiveStatus flips
+    // to LIVE right at kick-off even before the provider marks it in-play.
+    const st = effectiveStatus(match, now)
+    if (st === 'LIVE' || st === 'FINISHED') return true
+    // In the short pre-kickoff window (prediction closed at kickoff − 5 min but
+    // not yet kicked off), only those who already predicted can peek.
     return !match.predictionOpen && !!predictions[match.id]
   }
 
