@@ -1,5 +1,5 @@
 import { motion } from 'framer-motion'
-import { Crown, Medal, Award, Trophy, Sparkles } from 'lucide-react'
+import { Crown, Medal, Award, Trophy, Sparkles, ChevronUp, ChevronDown } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 
 const RANK_CONFIG = {
@@ -74,7 +74,7 @@ function ChampionCard({ winner, roomName, prize, isMe }) {
   )
 }
 
-export default function LeaderboardTable({ entries, eventStatus, roomName, prize }) {
+export default function LeaderboardTable({ entries, eventStatus, roomName, prize, projectedEntries, liveActive }) {
   const { user } = useAuth()
 
   if (!entries || entries.length === 0) {
@@ -86,6 +86,10 @@ export default function LeaderboardTable({ entries, eventStatus, roomName, prize
   }
 
   const showChampion = eventStatus === 'COMPLETED'
+  // While a match is live, show projected standings (actual points + live points)
+  // re-ranked, with an arrow showing where each player would move.
+  const live = !showChampion && liveActive && projectedEntries && projectedEntries.length > 0
+  const rows = live ? projectedEntries : entries
 
   return (
     <div className="space-y-2">
@@ -98,30 +102,49 @@ export default function LeaderboardTable({ entries, eventStatus, roomName, prize
         />
       )}
 
-      {entries.map((entry, i) => {
-        const config = RANK_CONFIG[entry.rank]
-        const RankIcon = config?.icon
-        const isMe = user?.id === entry.userId
+      {live && (
+        <div className="flex items-center gap-2 text-[11px] font-semibold text-yellow-400/90 px-1 pb-0.5">
+          <span className="w-1.5 h-1.5 bg-red-500 rounded-full animate-live-blink" />
+          Projected standings — updating live as goals go in
+        </div>
+      )}
+
+      {rows.map((entry, i) => {
+        const displayRank = live ? entry.projectedRank : entry.rank
+        const points      = live ? entry.projectedTotal : entry.totalPoints
+        const config      = RANK_CONFIG[displayRank]
+        const RankIcon    = config?.icon
+        const isMe        = user?.id === entry.userId
+        const delta       = live ? (entry.deltaRank ?? 0) : 0
 
         return (
           <motion.div
             key={entry.userId}
+            layout
             initial={{ opacity: 0, x: -20 }}
             animate={{ opacity: 1, x: 0 }}
-            transition={{ delay: i * 0.05 }}
-            className={`glass-card p-4 flex items-center gap-4 ${
+            transition={{ delay: Math.min(i, 8) * 0.04 }}
+            className={`glass-card p-3 sm:p-4 flex items-center gap-2.5 sm:gap-4 ${
               isMe ? 'border-primary/40 bg-primary/5' : ''
             }`}
           >
-            <div className={`w-10 h-10 rounded-xl flex items-center justify-center font-bold text-sm ${
+            <div className={`w-9 h-9 sm:w-10 sm:h-10 rounded-xl flex items-center justify-center font-bold text-sm flex-shrink-0 ${
               config ? `${config.bg} border ${config.color}` : 'bg-white/5 text-gray-400'
             }`}>
-              {RankIcon ? <RankIcon size={18} /> : entry.rank}
+              {RankIcon ? <RankIcon size={18} /> : displayRank}
             </div>
 
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-primary/30 to-secondary/30 flex items-center justify-center text-white font-bold text-sm overflow-hidden">
+            {/* Rank movement arrow (live only) */}
+            {live && delta !== 0 && (
+              <span className={`flex items-center text-[11px] font-bold flex-shrink-0 -ml-1 ${delta > 0 ? 'text-accent' : 'text-red-400'}`}>
+                {delta > 0 ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+                {Math.abs(delta)}
+              </span>
+            )}
+
+            <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-gradient-to-br from-primary/30 to-secondary/30 flex items-center justify-center text-white font-bold text-sm overflow-hidden flex-shrink-0">
               {entry.profilePic ? (
-                <img src={entry.profilePic} alt="" className="w-full h-full object-cover" />
+                <img src={entry.profilePic} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
               ) : (
                 entry.username?.[0]?.toUpperCase()
               )}
@@ -131,15 +154,22 @@ export default function LeaderboardTable({ entries, eventStatus, roomName, prize
               <div className="font-semibold text-white text-sm truncate">
                 {entry.username} {isMe && <span className="text-primary text-xs">(You)</span>}
               </div>
-              <div className="text-[10px] sm:text-xs text-gray-500">
-                {entry.matchesPredicted} pred &middot; {entry.exactScores} exact &middot; {entry.correctOutcomes} corr
-              </div>
+              {live && entry.livePoints > 0 ? (
+                <div className="text-[10px] sm:text-xs text-yellow-400/90 font-semibold">
+                  +{entry.livePoints} live
+                </div>
+              ) : (
+                <div className="text-[10px] sm:text-xs text-gray-500 truncate">
+                  {entry.matchesPredicted} pred &middot; {entry.exactScores} exact &middot; {entry.correctOutcomes} corr
+                </div>
+              )}
             </div>
 
-            <div className={`text-xl font-black tabular-nums ${
-              entry.rank === 1 ? 'text-gold' : entry.rank === 2 ? 'text-silver' : entry.rank === 3 ? 'text-bronze' : 'text-white'
+            <div className={`text-lg sm:text-xl font-black tabular-nums flex-shrink-0 ${
+              live ? 'text-yellow-400'
+                   : displayRank === 1 ? 'text-gold' : displayRank === 2 ? 'text-silver' : displayRank === 3 ? 'text-bronze' : 'text-white'
             }`}>
-              {entry.totalPoints}
+              {points}
             </div>
           </motion.div>
         )

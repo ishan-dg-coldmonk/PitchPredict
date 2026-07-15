@@ -9,6 +9,7 @@ import LeaderboardTable from '../components/LeaderboardTable'
 import StandingsTable from '../components/StandingsTable'
 import StatsTab from '../components/StatsTab'
 import ChatRoom from '../components/ChatRoom'
+import GoalBanner from '../components/GoalBanner'
 import PredictionModal from '../components/PredictionModal'
 import LiveIndicator from '../components/LiveIndicator'
 import toast from 'react-hot-toast'
@@ -71,6 +72,29 @@ function mergeMessages(existing, incoming) {
 }
 
 const CHAT_PAGE = 40
+
+// Toast for a goal scored while the user is away from the Matches tab. Fixed id
+// so a fresh goal replaces the previous toast instead of stacking.
+function notifyGoal(moment, myProjected, onOpen) {
+  toast.custom((t) => (
+    <div
+      onClick={() => { onOpen(); toast.dismiss(t.id) }}
+      className={`cursor-pointer flex items-center gap-3 bg-[#1A1A2E] border border-accent/30 rounded-xl px-3.5 py-2.5 shadow-lg max-w-xs ${
+        t.visible ? 'animate-enter' : 'animate-leave'
+      }`}
+    >
+      <span className="text-xl flex-shrink-0">⚽</span>
+      <div className="min-w-0">
+        <div className="text-xs font-bold text-white truncate">
+          GOAL! {moment.homeTeam} {moment.homeScore}–{moment.awayScore} {moment.awayTeam}
+        </div>
+        {myProjected != null
+          ? <div className="text-[11px] text-accent font-semibold">Your pick → {myProjected} pts if it ends now</div>
+          : <div className="text-[11px] text-gray-400">Tap to watch it live</div>}
+      </div>
+    </div>
+  ), { id: 'goal', duration: 4500 })
+}
 
 // Toast for a new chat message received while off the Chat tab. A fixed id means
 // a fresh message replaces the previous toast instead of stacking them up.
@@ -254,6 +278,10 @@ export default function RoomDetailPage() {
   const [chatUnread, setChatUnread]       = useState(0)
   const [chatAvatars, setChatAvatars]     = useState({})   // userId → profilePic
   const [wsConnected, setWsConnected]     = useState(false)
+  // Live-match engagement: all room predictions per live match (for projected
+  // standings) and the current "GOAL!" moment banner.
+  const [livePredsByMatch, setLivePredsByMatch] = useState({})   // matchId → PredictionDTO[]
+  const [goalMoment, setGoalMoment]       = useState(null)
   const [predictions, setPredictions] = useState({})
   const [mainTab, setMainTab]         = useState('matches')
   const [matchTab, setMatchTab]       = useState('upcoming')
@@ -277,6 +305,14 @@ export default function RoomDetailPage() {
   // the latest without being re-created and re-subscribing.
   const chatAvatarsRef = useRef({})
   useEffect(() => { chatAvatarsRef.current = chatAvatars }, [chatAvatars])
+  // Mirrors so the (stable) match WS handler can read latest matches/predictions
+  // for goal detection without re-subscribing.
+  const matchesRef = useRef([])
+  useEffect(() => { matchesRef.current = matches }, [matches])
+  const predictionsRef = useRef({})
+  useEffect(() => { predictionsRef.current = predictions }, [predictions])
+  const goalTimerRef = useRef(null)
+  const fetchedLiveRef = useRef(new Set())   // live matches whose predictions we've fetched
 
   // Wall-clock tick (every 20s) so kick-off-based derived values (featured pick,
   // live count, "today" strip) re-evaluate when a match crosses kick-off even
@@ -375,6 +411,36 @@ export default function RoomDetailPage() {
       (event) => {
         // event = { type: 'MATCH_UPDATED' | 'MATCH_LIVE' | 'MATCH_FINISHED', payload: MatchDTO }
         const updatedMatch = event.payload
+
+        // ── Goal detection: total goals went up while the match is live ───────
+        const old = matchesRef.current.find((m) => m.id === updatedMatch.id)
+        if (old && updatedMatch.status === 'LIVE' && old.homeScore != null) {
+          const before = (old.homeScore ?? 0) + (old.awayScore ?? 0)
+          const after  = (updatedMatch.homeScore ?? 0) + (updatedMatch.awayScore ?? 0)
+          if (after > before) {
+            const moment = {
+              key: `${updatedMatch.id}-${updatedMatch.homeScore}-${updatedMatch.awayScore}`,
+              homeTeam: updatedMatch.homeTeam, awayTeam: updatedMatch.awayTeam,
+              homeScore: updatedMatch.homeScore, awayScore: updatedMatch.awayScore,
+              homeCrest: updatedMatch.homeCrest, awayCrest: updatedMatch.awayCrest,
+              scoringSide: (updatedMatch.homeScore ?? 0) > (old.homeScore ?? 0) ? 'home' : 'away',
+            }
+            if (mainTabRef.current === 'matches') {
+              // Watching the matches → big celebratory banner.
+              setGoalMoment(moment)
+              clearTimeout(goalTimerRef.current)
+              goalTimerRef.current = setTimeout(() => setGoalMoment(null), 4500)
+            } else {
+              // Elsewhere → a toast with your projected points for this match.
+              const myPred = predictionsRef.current[updatedMatch.id]
+              const proj = myPred
+                ? computePoints(myPred, updatedMatch.homeScore, updatedMatch.awayScore,
+                    { penaltyHome: updatedMatch.penaltyHome, penaltyAway: updatedMatch.penaltyAway, duration: updatedMatch.duration })?.total
+                : null
+              notifyGoal(moment, proj, () => setMainTab('matches'))
+            }
+          }
+        }
 
         setMatches((prev) =>
           prev.map((m) => (m.id === updatedMatch.id ? updatedMatch : m))
@@ -532,6 +598,52 @@ export default function RoomDetailPage() {
   const eventEnded = event?.status === 'COMPLETED'
   const champion = useMemo(() => (eventEnded ? getChampion(matches) : null), [eventEnded, matches])
 
+  // ── Live-match projected standings ─────────────────────────────────────────
+  // Matches actually in play with a score on the board.
+  const liveMatches = useMemo(
+    () => matches.filter((m) => m.status === 'LIVE' && m.homeScore != null),
+    [matches]
+  )
+  const liveActive = liveMatches.length > 0
+
+  // Fetch every room member's predictions for each live match (once — they're
+  // locked). Needed to project the whole leaderboard, not just our own picks.
+  useEffect(() => {
+    liveMatches.forEach((m) => {
+      if (fetchedLiveRef.current.has(m.id)) return
+      fetchedLiveRef.current.add(m.id)
+      API.get(`/predictions/room/${roomId}/match/${m.id}`)
+        .then((r) => setLivePredsByMatch((prev) => ({ ...prev, [m.id]: r.data })))
+        .catch(() => setLivePredsByMatch((prev) => ({ ...prev, [m.id]: [] })))
+    })
+  }, [liveMatches, roomId])
+
+  // Actual leaderboard + live projected points, re-ranked, with a rank delta.
+  const projectedEntries = useMemo(() => {
+    if (!liveActive) return null
+    const livePts = {}
+    for (const m of liveMatches) {
+      const preds = livePredsByMatch[m.id]
+      if (!preds) continue
+      const opts = { penaltyHome: m.penaltyHome, penaltyAway: m.penaltyAway, duration: m.duration }
+      for (const p of preds) {
+        const bd = computePoints(p, m.homeScore, m.awayScore, opts)
+        if (bd) livePts[p.userId] = (livePts[p.userId] || 0) + bd.total
+      }
+    }
+    const withProj = leaderboard.map((e) => ({
+      ...e,
+      livePoints: livePts[e.userId] || 0,
+      projectedTotal: (e.totalPoints || 0) + (livePts[e.userId] || 0),
+    }))
+    withProj.sort((a, b) => b.projectedTotal - a.projectedTotal || (a.rank ?? 999) - (b.rank ?? 999))
+    return withProj.map((e, i) => ({
+      ...e,
+      projectedRank: i + 1,
+      deltaRank: (e.rank ?? (i + 1)) - (i + 1),   // >0 means moved up
+    }))
+  }, [liveActive, liveMatches, livePredsByMatch, leaderboard])
+
   // ── Prediction view eligibility ───────────────────────────────────────────
   const canViewPredictions = (match) => {
     if (eventEnded) return true
@@ -614,6 +726,7 @@ export default function RoomDetailPage() {
   return (
     <div className="min-h-screen bg-[#0a0a12]">
       <Navbar />
+      <GoalBanner moment={goalMoment} onDismiss={() => setGoalMoment(null)} />
       <div className="pt-20 pb-16 max-w-4xl mx-auto px-3 sm:px-5">
 
         {/* Header */}
@@ -886,6 +999,8 @@ export default function RoomDetailPage() {
             <motion.div key="leaderboard" {...fade}>
               <LeaderboardTable
                 entries={leaderboard}
+                projectedEntries={projectedEntries}
+                liveActive={liveActive}
                 eventStatus={event?.status}
                 eventTitle={event?.title}
                 roomName={room?.name}
