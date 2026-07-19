@@ -14,10 +14,14 @@ public interface PredictionRepository extends JpaRepository<Prediction, Long> {
     List<Prediction> findByMatchIdAndRoomId(Long matchId, Long roomId);
     List<Prediction> findByMatchId(Long matchId);
 
+    // Tie-break chain keeps ranks deterministic (no more shuffling for equal points)
+    // and makes the champion unambiguous: most points → most exact scores → most
+    // correct outcomes → lowest userId (stable final tiebreak).
     @Query("SELECT p.userId, SUM(p.points) as totalPoints, COUNT(p) as matchesPredicted, " +
            "SUM(CASE WHEN p.basePoints = 10 THEN 1 ELSE 0 END) as exactScores, " +
            "SUM(CASE WHEN p.outcomeBonus > 0 THEN 1 ELSE 0 END) as correctOutcomes " +
            "FROM Prediction p WHERE p.roomId = :roomId " +
-           "GROUP BY p.userId ORDER BY totalPoints DESC")
+           "GROUP BY p.userId " +
+           "ORDER BY totalPoints DESC, exactScores DESC, correctOutcomes DESC, p.userId ASC")
     List<Object[]> getLeaderboard(@Param("roomId") Long roomId);
 }
