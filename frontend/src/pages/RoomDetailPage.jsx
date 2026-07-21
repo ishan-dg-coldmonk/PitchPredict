@@ -79,7 +79,7 @@ function notifyGoal(moment, myProjected, onOpen) {
   toast.custom((t) => (
     <div
       onClick={() => { onOpen(); toast.dismiss(t.id) }}
-      className={`cursor-pointer flex items-center gap-3 bg-[#1A1A2E] border border-accent/30 rounded-xl px-3.5 py-2.5 shadow-lg max-w-xs ${
+      className={`cursor-pointer flex items-center gap-3 bg-[#1A1A2E] border border-accent/30 rounded-xl px-3.5 py-2.5 shadow-lg max-w-[calc(100vw-2.5rem)] sm:max-w-xs ${
         t.visible ? 'animate-enter' : 'animate-leave'
       }`}
     >
@@ -103,7 +103,7 @@ function notifyNewMessage(msg, profilePic, onOpen) {
   toast.custom((t) => (
     <div
       onClick={() => { onOpen(); toast.dismiss(t.id) }}
-      className={`cursor-pointer flex items-center gap-3 bg-[#1A1A2E] border border-white/10 rounded-xl px-3.5 py-2.5 shadow-lg max-w-xs ${
+      className={`cursor-pointer flex items-center gap-3 bg-[#1A1A2E] border border-white/10 rounded-xl px-3.5 py-2.5 shadow-lg max-w-[calc(100vw-2.5rem)] sm:max-w-xs ${
         t.visible ? 'animate-enter' : 'animate-leave'
       }`}
     >

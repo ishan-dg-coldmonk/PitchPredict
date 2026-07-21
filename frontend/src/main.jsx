@@ -23,6 +23,12 @@ createRoot(document.getElementById('root')).render(
                 background: '#1A1A2E',
                 color: '#E0E0E0',
                 border: '1px solid rgba(255,255,255,0.1)',
+                // Responsive without media queries: never wider than the viewport
+                // (minus the toaster's 16px insets), capped at 24rem on desktop.
+                maxWidth: 'min(calc(100vw - 2.5rem), 24rem)',
+                fontSize: '0.875rem',
+                padding: '10px 14px',
+                wordBreak: 'break-word',
               },
             }}
           />
