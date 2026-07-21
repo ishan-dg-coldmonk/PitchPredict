@@ -342,7 +342,9 @@ export default function RoomDetailPage() {
   }, [upcomingMatches, now])
 
   const groupedUpcoming = useMemo(() => groupByESTDay(upcomingMatches), [upcomingMatches])
-  const groupedFinished = useMemo(() => groupByESTDay(finishedMatches), [finishedMatches])
+  // Finished tab shows latest first: groupByESTDay orders days ascending, so reverse
+  // the day groups (matches within each day are already latest-first).
+  const groupedFinished = useMemo(() => groupByESTDay(finishedMatches).reverse(), [finishedMatches])
   const liveCount       = useMemo(() => matches.filter((m) => effectiveStatus(m, now) === 'LIVE').length, [matches, now])
   const finishedCount   = finishedMatches.length
   const upcomingCount   = upcomingMatches.filter((m) => effectiveStatus(m, now) === 'SCHEDULED').length
