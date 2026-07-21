@@ -25,15 +25,20 @@ public interface MatchRepository extends JpaRepository<Match, Long> {
      *
      * Finds matches where:
      *   - matchDate is within [now - lookback, now + lookahead]
-     *   - status is not FINISHED, CANCELLED, or POSTPONED
+     *   - status is not CANCELLED or POSTPONED
      *   - externalMatchId exists (needed to call the football API)
      *
-     * Lookback (3h) covers matches that are still running.
+     * NOTE: FINISHED matches ARE included (within the window) on purpose. A match
+     * can be marked FINISHED with a stale, non-final score (e.g. captured at 90'
+     * before an extra-time winner). Re-polling recently-finished matches lets the
+     * scheduler catch the corrected final score and re-score points for it.
+     *
+     * Lookback (4h) covers even a match that goes to extra time + penalties.
      * Lookahead (15min) catches matches about to start.
      */
     @Query("SELECT m FROM Match m " +
            "WHERE m.externalMatchId IS NOT NULL " +
-           "AND m.status NOT IN ('FINISHED', 'CANCELLED', 'POSTPONED') " +
+           "AND m.status NOT IN ('CANCELLED', 'POSTPONED') " +
            "AND m.eventId NOT IN " +
            "    (SELECT e.id FROM Event e WHERE e.status = com.pitchpredict.enums.EventStatus.COMPLETED) " +
            "AND m.matchDate BETWEEN :from AND :to")

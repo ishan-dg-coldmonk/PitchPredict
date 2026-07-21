@@ -41,7 +41,9 @@ import java.util.List;
 @Slf4j
 public class MatchScoreUpdater {
 
-    private static final int LOOKBACK_HOURS    = 3;
+    // 4h lookback covers a match that runs 90' + extra time + penalties (~3h) plus
+    // stoppages/delays, so a long knockout stays polled through its real finish.
+    private static final int LOOKBACK_HOURS    = 4;
     private static final int LOOKAHEAD_MINUTES = 15;
     private static final DateTimeFormatter FMT = DateTimeFormatter.ofPattern("dd-MMM HH:mm");
 
@@ -90,13 +92,17 @@ public class MatchScoreUpdater {
 
             MatchStatus statusAfter = updated.getStatus();
             boolean statusChanged = statusBefore != statusAfter;
-            // Also treat a penalty-tally change as a score change so live shootouts push updates.
-            boolean scoreChanged  = statusAfter == MatchStatus.LIVE && (
+            boolean scoreDiff =
                     !java.util.Objects.equals(scoreBefore_home, updated.getHomeScore()) ||
                     !java.util.Objects.equals(scoreBefore_away, updated.getAwayScore()) ||
                     !java.util.Objects.equals(penBefore_home, updated.getPenaltyHome()) ||
-                    !java.util.Objects.equals(penBefore_away, updated.getPenaltyAway())
-            );
+                    !java.util.Objects.equals(penBefore_away, updated.getPenaltyAway());
+            // Treat a penalty-tally change as a score change so live shootouts push updates.
+            boolean scoreChanged = statusAfter == MatchStatus.LIVE && scoreDiff;
+            // A FINISHED match whose score changed on re-poll = we'd frozen a stale
+            // (e.g. pre-extra-time) score. Correct it AND re-score points.
+            boolean finishedCorrection = statusBefore == MatchStatus.FINISHED
+                    && statusAfter == MatchStatus.FINISHED && scoreDiff;
 
             // Build DTO once (predictionOpen computed dynamically inside toDTO)
             MatchDTO dto = matchService.toDTO(updated);
@@ -115,14 +121,28 @@ public class MatchScoreUpdater {
                         updated.getId(),
                         updated.getHomeTeam(), updated.getHomeScore(),
                         updated.getAwayScore(), updated.getAwayTeam());
+            } else if (finishedCorrection) {
+                webSocketService.broadcastMatchFinished(dto);
+                changed++;
+                log.warn("[Scheduler] FINISHED score correction │ matchId={} │ {} {}-{} {} (was {}-{}) → re-scoring",
+                        updated.getId(),
+                        updated.getHomeTeam(), updated.getHomeScore(),
+                        updated.getAwayScore(), updated.getAwayTeam(),
+                        scoreBefore_home, scoreBefore_away);
             }
 
-            // ── Points calculation on FINISHED transition ───────────────────
+            // ── Points calculation ──────────────────────────────────────────
             if (statusBefore != MatchStatus.FINISHED && statusAfter == MatchStatus.FINISHED) {
                 log.info("[Scheduler] FINISHED │ matchId={} │ {} {}-{} {} → calculating points",
                         updated.getId(),
                         updated.getHomeTeam(), updated.getHomeScore(),
                         updated.getAwayScore(), updated.getAwayTeam());
+                pointsCalculationService.calculatePointsForMatch(updated);
+            } else if (finishedCorrection) {
+                // Force a re-score: clear the idempotency guard so points recompute
+                // against the corrected final score, then broadcast fresh leaderboards.
+                updated.setPointsCalculated(false);
+                matchRepository.save(updated);
                 pointsCalculationService.calculatePointsForMatch(updated);
             }
         }
